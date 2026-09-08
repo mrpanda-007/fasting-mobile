@@ -6,7 +6,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, darkColors } from '../../../shared/theme/colors';
 import { motion } from '../../../shared/theme/motion';
 import { useAppFlow } from '../../app/useAppFlow';
-import type { AppTab, HistoryView, PairFlow, Partner, Sheet } from '../../app/types';
+import type { AppTab, PairFlow, Partner, Sheet } from '../../app/types';
+import { formatDuration, type TimerSnapshot } from '../../../domain/fasting/engine';
+import { protocolDetail } from '../../../domain/fasting/protocol';
+import { useFastingTimer } from '../../fasting/hooks/useFastingTimer';
+import type { HistoryItem } from '../../../data/local/sqlite/fastingRepository';
 import { plans } from '../model';
 
 type Palette = typeof colors | typeof darkColors;
@@ -17,31 +21,42 @@ let styles: ReturnType<typeof createStyles>;
 /** The first production flow: wireframe 3b, states T1 through T5. */
 export function TodayScreen() {
   const flow = useAppFlow();
-  const { state, setState, tab, setTab, pairFlow, setPairFlow, partner, sheet, setSheet, reactionToast,
-    setReactionToast, settingsOpen, setSettingsOpen, historyView, setHistoryView, darkMode, setDarkMode,
-    selectedPlan, returnToIdle, choosePlan, startBuilder, savePartner } = flow;
+  const timer = useFastingTimer();
+  const { state, setState, tab, setTab, sheet, setSheet, settingsOpen, setSettingsOpen, darkMode, setDarkMode,
+    selectedPlan, returnToIdle, choosePlan, startBuilder } = flow;
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   palette = darkMode ? darkColors : colors;
   styles = createStyles();
   const isBuilder = state === 'rollingBuilder' || state === 'customBuilder';
+  const activeState = timer.active?.phaseKind === 'fast' ? 'fasting' : timer.active?.phaseKind === 'refeed' ? 'refeeding' : state;
+  const startSelectedPlan = async () => { await timer.startPreset(selectedPlan); setState('fasting'); };
+  const endActive = async () => { await timer.endActivePhase(); setSheet(null); };
+  const startPending = async () => { await timer.startPendingPhase(); setSheet(null); };
+  const endAndStartRefeed = async () => {
+    await timer.endActivePhase();
+    await timer.startPendingPhase();
+    setSheet(null);
+  };
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, state === 'refeeding' || state === 'transition' ? styles.refeedCanvas : undefined]}>
       <View style={styles.screen}>
         <StatusBar style={darkMode ? 'light' : 'dark'} />
         {!isBuilder && <AppHeader onOpenSettings={() => setSettingsOpen(true)} />}
-        {tab === 'today' && state === 'idle' && <IdleState selectedPlan={selectedPlan} onPlanSelect={choosePlan} onStart={() => setState('fasting')} onTogether={() => setTab('together')} partner={partner?.name} />}
-        {tab === 'today' && state === 'fasting' && <FastingState onOpenEnd={() => setSheet('endFast')} onOpenPlan={() => setSheet('planDetails')} onOpenReaction={() => setSheet('reaction')} partner={partner?.name} />}
-        {tab === 'today' && state === 'refeeding' && <RefeedingState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onOpenReaction={() => setSheet('reaction')} onStartNext={() => setState('fasting')} onTimerComplete={() => setState('transition')} partner={partner?.name} />}
-        {tab === 'today' && state === 'transition' && <TransitionState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onStartNext={() => setState('fasting')} partner={partner?.name} />}
+        {tab === 'today' && !timer.active && !timer.pending && state === 'idle' && <IdleState selectedPlan={selectedPlan} onPlanSelect={choosePlan} onStart={startSelectedPlan} />}
+        {tab === 'today' && activeState === 'fasting' && timer.active && <FastingState timer={timer.active} onOpenEnd={() => setSheet('endFast')} onOpenPlan={() => setSheet('planDetails')} />}
+        {tab === 'today' && activeState === 'refeeding' && timer.active && <RefeedingState timer={timer.active} onEndRefeed={endActive} onOpenPlan={() => setSheet('planDetails')} />}
+        {tab === 'today' && timer.pending && <PendingState kind={timer.pending.kind} planDetail={protocolDetail(timer.pending.protocol)} onEndPlan={async () => { await timer.cancelPlan(); setState('complete'); }} onStart={startPending} />}
+        {tab === 'today' && !timer.active && !timer.pending && state === 'transition' && <TransitionState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onStartNext={() => setState('fasting')} />}
         {tab === 'today' && state === 'complete' && <CompleteState onDone={() => returnToIdle()} onRepeat={() => returnToIdle('Rolling')} />}
-        {state === 'rollingBuilder' && <PlanBuilder variant="rolling" onClose={() => setState('idle')} onStart={() => startBuilder('Rolling')} />}
-        {state === 'customBuilder' && <PlanBuilder variant="custom" onClose={() => setState('idle')} onStart={() => startBuilder('Custom')} />}
-        {tab === 'together' && <TogetherScreen flow={pairFlow} onBackToToday={() => setTab('today')} onFlowChange={setPairFlow} onOpenReaction={() => setSheet('reaction')} onPair={savePartner} onStartOwnFast={() => { setState('fasting'); setTab('today'); }} partner={partner} />}
-        {tab === 'history' && <HistoryScreen view={historyView} onBack={() => setHistoryView('list')} onOpenFast={() => setHistoryView('fast')} onOpenPlan={() => setHistoryView('plan')} />}
+        {state === 'rollingBuilder' && <PlanBuilder variant="rolling" onClose={() => setState('idle')} onStart={async (protocol) => { await timer.startProtocol(protocol); startBuilder('Rolling'); }} />}
+        {state === 'customBuilder' && <PlanBuilder variant="custom" onClose={() => setState('idle')} onStart={async (protocol) => { await timer.startProtocol(protocol); startBuilder('Custom'); }} />}
+        {/* Together, pairing, and reactions are intentionally paused while the solo flow is refined. */}
+        {tab === 'history' && <HistoryScreen entries={timer.history} selectedId={selectedHistoryId} onBack={() => setSelectedHistoryId(null)} onOpenEntry={setSelectedHistoryId} />}
         {!isBuilder && <BottomTabs activeTab={tab} onSelect={setTab} />}
-        <AppSheet kind={sheet} onClose={() => setSheet(null)} onEndStandalone={() => { setSheet(null); returnToIdle(); }} onFinishPlan={() => { setSheet(null); setState('complete'); }} onStartRefeed={() => { setSheet(null); setState('refeeding'); }} onSendReaction={() => { setSheet(null); setReactionToast(true); }} rolling={selectedPlan === 'Rolling'} />
+        <AppSheet activeTimer={timer.active} kind={sheet} onClose={() => setSheet(null)} onEndStandalone={async () => { await endActive(); returnToIdle(); }} onFinishPlan={async () => { await timer.cancelPlan(); setSheet(null); setState('complete'); }} onStartRefeed={endAndStartRefeed} rolling={timer.active?.protocol.repeatCount !== 1} />
         <ThemePicker darkMode={darkMode} onClose={() => setSettingsOpen(false)} onSelect={(value) => { setDarkMode(value); setSettingsOpen(false); }} visible={settingsOpen} />
-        {reactionToast && <ReactionToast onDismiss={() => setReactionToast(false)} />}
+        {timer.error && <Text style={styles.builderNote}>{timer.error}</Text>}
       </View>
     </SafeAreaView>
   );
@@ -53,7 +68,7 @@ function AppHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
 
 function SettingsIcon() { return <View style={styles.settingsIcon}><View style={[styles.settingLine, styles.settingLineOne]} /><View style={[styles.settingDot, styles.settingDotOne]} /><View style={[styles.settingLine, styles.settingLineTwo]} /><View style={[styles.settingDot, styles.settingDotTwo]} /><View style={[styles.settingLine, styles.settingLineThree]} /><View style={[styles.settingDot, styles.settingDotThree]} /></View>; }
 
-function IdleState({ onPlanSelect, onStart, onTogether, partner, selectedPlan }: { onPlanSelect: (name: string) => void; onStart: () => void; onTogether: () => void; partner?: string; selectedPlan: string }) {
+function IdleState({ onPlanSelect, onStart, selectedPlan }: { onPlanSelect: (name: string) => void; onStart: () => void; selectedPlan: string }) {
   const plan = plans.find((item) => item.name === selectedPlan) ?? plans[3];
   return <View style={styles.content}>
     <Text style={styles.question}>How long are you fasting?</Text>
@@ -66,34 +81,41 @@ function IdleState({ onPlanSelect, onStart, onTogether, partner, selectedPlan }:
     })}</View>
     <Text style={styles.starting}>Starting: {plan.name} · {plan.detail}</Text>
     <PrimaryButton label="Start Fast" onPress={onStart} />
-    <PressableScale accessibilityRole="button" onPress={onTogether}><Text style={styles.quietAction}>{partner ? `Paired with ${partner}` : 'Fast with someone'}</Text></PressableScale>
   </View>;
 }
 
-function FastingState({ onOpenEnd, onOpenPlan, onOpenReaction, partner }: { onOpenEnd: () => void; onOpenPlan: () => void; onOpenReaction: () => void; partner?: string }) {
+function FastingState({ onOpenEnd, onOpenPlan, timer }: { onOpenEnd: () => void; onOpenPlan: () => void; timer: TimerSnapshot }) {
+  const display = formatDuration(timer.remainingMs);
+  const summary = timer.targetReached ? `Target reached · continues until you end fast` : `${formatDuration(timer.elapsedMs).primary} elapsed · ${formatDuration(timer.remainingMs).primary} left`;
   return <View style={styles.content}>
-    <StateLabel colour={palette.accent}>FASTING</StateLabel><Timer primary="18:42" secondary=":13" />
-    <Text style={styles.summary}>18h 42m of 24h · 5h 17m left</Text><ProgressBar colour={palette.accent} value="78%" />
-    <PlanDetail onPress={onOpenPlan} text="Rolling 48:4 · Cycle 2 of 5" />{partner && <PartnerCard name={partner} status="Fasting" detail="17h 58m of 24h" statusColour={palette.accent} />}
-    <SecondaryButton label="🙂  Send reaction" onPress={onOpenReaction} /><DangerButton label="End fast" onPress={onOpenEnd} />
+    <StateLabel colour={palette.accent}>{timer.targetReached ? 'FASTING · TARGET REACHED' : 'FASTING'}</StateLabel><Timer primary={display.primary} secondary={display.seconds} />
+    <Text style={styles.summary}>{summary}</Text><ProgressBar colour={palette.accent} value={`${Math.round(timer.progress * 100)}%` as `${number}%`} />
+    <PlanDetail onPress={onOpenPlan} text={`${timer.planName} · Cycle ${timer.cycleNumber}`} />
+    <DangerButton label="End fast" onPress={onOpenEnd} />
   </View>;
 }
 
-function RefeedingState({ onEndPlan, onOpenPlan, onOpenReaction, onStartNext, onTimerComplete, partner }: { onEndPlan: () => void; onOpenPlan: () => void; onOpenReaction: () => void; onStartNext: () => void; onTimerComplete: () => void; partner?: string }) {
+function RefeedingState({ onEndRefeed, onOpenPlan, timer }: { onEndRefeed: () => void; onOpenPlan: () => void; timer: TimerSnapshot }) {
+  const display = formatDuration(timer.remainingMs);
   return <View style={styles.content}>
-    <StateLabel colour={palette.success}>REFEEDING</StateLabel>
-    <PressableScale accessibilityLabel="Preview refeed completed" onPress={onTimerComplete} style={styles.timerTapTarget}><Timer primary="01:14" secondary=":22" /></PressableScale>
-    <Text style={styles.summary}>1h 14m of 4h · 2h 45m left</Text><ProgressBar colour={palette.success} value="30%" />
-    <PlanDetail onPress={onOpenPlan} text="Rolling 48:4 · Cycle 2 of 5" />{partner && <PartnerCard name={partner} status="Fasting" detail="36m left" statusColour={palette.accent} />}
-    <PrimaryButton label="Start next fast now" onPress={onStartNext} /><SecondaryButton label="🙂  Send reaction" onPress={onOpenReaction} /><DangerButton label="End plan" onPress={onEndPlan} />
+    <StateLabel colour={palette.success}>{timer.targetReached ? 'REFEED · TARGET REACHED' : 'REFEEDING'}</StateLabel>
+    <Timer primary={display.primary} secondary={display.seconds} />
+    <Text style={styles.summary}>{timer.targetReached ? 'Target reached · end refeed when you are ready' : `${formatDuration(timer.remainingMs).primary} left`}</Text><ProgressBar colour={palette.success} value={`${Math.round(timer.progress * 100)}%` as `${number}%`} />
+    <PlanDetail onPress={onOpenPlan} text={`${timer.planName} · Cycle ${timer.cycleNumber}`} />
+    <PrimaryButton label="End refeed" onPress={onEndRefeed} />
   </View>;
 }
 
-function TransitionState({ onEndPlan, onOpenPlan, onStartNext, partner }: { onEndPlan: () => void; onOpenPlan: () => void; onStartNext: () => void; partner?: string }) {
+function PendingState({ kind, onEndPlan, onStart, planDetail }: { kind: 'fast' | 'refeed'; onEndPlan: () => void; onStart: () => void; planDetail: string }) {
+  const isRefeed = kind === 'refeed';
+  return <View style={styles.content}><StateLabel colour={isRefeed ? palette.success : palette.accent}>{isRefeed ? 'FAST COMPLETE' : 'REFEED COMPLETE'}</StateLabel><Text style={styles.question}>{isRefeed ? 'Ready to refeed' : 'Ready for your next fast'}</Text><Text style={styles.summary}>{planDetail}</Text><PrimaryButton label={isRefeed ? 'Start refeed' : 'Start next fast'} onPress={onStart} /><DangerButton label="End plan" onPress={onEndPlan} /><Text style={styles.starting}>Nothing starts until you tap Start.</Text></View>;
+}
+
+function TransitionState({ onEndPlan, onOpenPlan, onStartNext }: { onEndPlan: () => void; onOpenPlan: () => void; onStartNext: () => void }) {
   return <View style={styles.content}>
     <StateLabel colour={palette.success}>REFEED COMPLETE</StateLabel><Text style={styles.question}>Ready for your next fast</Text>
     <Text style={styles.summary}>4h Refeed finished 6:12 PM · Cycle 2 of 5 complete</Text><ProgressBar colour={palette.success} value="100%" />
-    <PlanDetail onPress={onOpenPlan} text="Next: 48h Fast · Cycle 3 of 5" />{partner && <PartnerCard name={partner} status="Refeeding" detail="2h 10m of 4h" statusColour={palette.success} />}
+    <PlanDetail onPress={onOpenPlan} text="Next: 48h Fast · Cycle 3 of 5" />
     <PrimaryButton label="Start next fast" onPress={onStartNext} /><DangerButton label="End plan" onPress={onEndPlan} />
     <Text style={styles.starting}>Auto-start is off, so nothing counts until you tap Start.</Text>
   </View>;
@@ -102,13 +124,13 @@ function TransitionState({ onEndPlan, onOpenPlan, onStartNext, partner }: { onEn
 function CompleteState({ onDone, onRepeat }: { onDone: () => void; onRepeat: () => void }) {
   return <View style={styles.content}>
     <StateLabel colour={palette.ink}>PLAN COMPLETE</StateLabel><Text style={styles.question}>Rolling 48:4</Text><Text style={styles.summary}>5 of 5 cycles</Text>
-    <View style={styles.stats}><Stat label="Fasting" value="240h 12m" /><Stat label="Refeeding" value="20h 05m" /><Stat label="Dates" value="Aug 23 – Sep 1" /><Stat label="Partner" value="Sam · paired throughout" /></View>
+    <View style={styles.stats}><Stat label="Fasting" value="240h 12m" /><Stat label="Refeeding" value="20h 05m" /><Stat label="Dates" value="Aug 23 – Sep 1" /></View>
     <PrimaryButton label="Done" onPress={onDone} /><SecondaryButton label="Do it again" onPress={onRepeat} />
     <Text style={styles.starting}>Do it again loads the protocol on Today. It does not start it.</Text>
   </View>;
 }
 
-function PlanBuilder({ onClose, onStart, variant }: { onClose: () => void; onStart: () => void; variant: 'rolling' | 'custom' }) {
+function PlanBuilder({ onClose, onStart, variant }: { onClose: () => void; onStart: (protocol: import('../../../domain/fasting/protocol').ProtocolSnapshot) => void; variant: 'rolling' | 'custom' }) {
   const rolling = variant === 'rolling';
   const [fast, setFast] = useState(rolling ? '48h' : '36h');
   const [refeed, setRefeed] = useState(rolling ? '4h' : 'None');
@@ -129,22 +151,20 @@ function PlanBuilder({ onClose, onStart, variant }: { onClose: () => void; onSta
     <ChoiceGroup label={rolling ? 'Refeed' : 'Then refeed'} values={rolling ? ['1h', '4h', '8h', '···'] : ['None', '1h', '4h', '···']} selected={refeed} onSelect={setRefeed} />
     <ChoiceGroup label="Repeat" values={rolling ? ['2', '3', '5', 'Forever'] : ['No', '2', '3', 'Forever']} selected={repeat} onSelect={setRepeat} />
     <View style={styles.protocolCard}><Text style={styles.protocol}>{summary}</Text><Text style={styles.protocolDetail}>{subcopy}</Text></View>
-    <PrimaryButton label={rolling ? 'Start Plan' : 'Start Fast'} onPress={onStart} />
-    {rolling && <SecondaryButton label="Connect a partner first" />}
+    <PrimaryButton label={rolling ? 'Start Plan' : 'Start Fast'} onPress={() => onStart({ version: 1, name: rolling ? `Rolling ${fast}:${refeed}` : `Custom ${fast}`, fastDurationMs: (Number.parseInt(fast, 10) || (rolling ? 48 : 36)) * 60 * 60 * 1000, refeedDurationMs: refeed === 'None' ? null : (Number.parseInt(refeed, 10) || 4) * 60 * 60 * 1000, repeatCount: repeat === 'Forever' ? null : repeat === 'No' ? 1 : (Number.parseInt(repeat, 10) || 1) })} />
     <Text style={styles.builderNote}>{rolling ? 'One cycle = one fast + its refeed. The plan completes after the final refeed.' : 'A single fast is one History entry. A rolling plan is one plan entry with cycles inside it.'}</Text>
   </View>;
 }
 
-function AppSheet({ kind, onClose, onEndStandalone, onFinishPlan, onSendReaction, onStartRefeed, rolling }: { kind: Sheet; onClose: () => void; onEndStandalone: () => void; onFinishPlan: () => void; onSendReaction: () => void; onStartRefeed: () => void; rolling: boolean }) {
+function AppSheet({ activeTimer, kind, onClose, onEndStandalone, onFinishPlan, onStartRefeed, rolling }: { activeTimer: TimerSnapshot | null; kind: Sheet; onClose: () => void; onEndStandalone: () => void; onFinishPlan: () => void; onStartRefeed: () => void; rolling: boolean }) {
   if (!kind) return null;
   return <Modal animationType="fade" onRequestClose={onClose} transparent visible>
     <View style={styles.modalOverlay}>
       <Pressable accessibilityLabel="Close sheet" onPress={onClose} style={styles.scrim} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
-        {kind === 'reaction' && <ReactionSheet onSend={onSendReaction} />}
-        {kind === 'planDetails' && <PlanDetailsSheet />}
-        {kind === 'endFast' && <EndFastSheet onClose={onClose} onEndStandalone={onEndStandalone} onFinishPlan={onFinishPlan} onStartRefeed={onStartRefeed} rolling={rolling} />}
+        {kind === 'planDetails' && activeTimer && <PlanDetailsSheet timer={activeTimer} />}
+        {kind === 'endFast' && activeTimer && <EndFastSheet timer={activeTimer} onClose={onClose} onEndStandalone={onEndStandalone} onFinishPlan={onFinishPlan} onStartRefeed={onStartRefeed} rolling={rolling} />}
       </View>
     </View>
   </Modal>;
@@ -154,17 +174,22 @@ function ThemePicker({ darkMode, onClose, onSelect, visible }: { darkMode: boole
   return <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}><View style={styles.themeOverlay}><Pressable accessibilityLabel="Close theme picker" onPress={onClose} style={styles.scrim} /><View style={styles.themePicker}><Text style={styles.themeTitle}>Appearance</Text><Text style={styles.themeCopy}>Choose a theme for the app.</Text><PressableScale accessibilityRole="button" onPress={() => onSelect(false)} style={[styles.themeOption, !darkMode && styles.themeOptionSelected]}><Text style={styles.planName}>Light</Text>{!darkMode && <Text style={styles.selectedAdornment}>✓</Text>}</PressableScale><PressableScale accessibilityRole="button" onPress={() => onSelect(true)} style={[styles.themeOption, darkMode && styles.themeOptionSelected]}><Text style={styles.planName}>Dark</Text>{darkMode && <Text style={styles.selectedAdornment}>✓</Text>}</PressableScale></View></View></Modal>;
 }
 
+// Paused paired-reaction UI retained for the later Together release.
 function ReactionSheet({ onSend }: { onSend: () => void }) {
   const [reaction, setReaction] = useState('🔥');
   return <View style={styles.sheetContent}><Text style={styles.sheetTitle}>Send Sam a reaction</Text><Text style={styles.summary}>A small nudge. It never changes their timer.</Text><View style={styles.reactions}>{['🔥', '👏', '💪', '❤️'].map((item) => <PressableScale key={item} onPress={() => setReaction(item)} style={[styles.reaction, reaction === item && styles.selectedReaction]}><Text style={styles.reactionText}>{item}</Text></PressableScale>)}</View><PrimaryButton label={`Send ${reaction}`} onPress={onSend} /></View>;
 }
 
-function PlanDetailsSheet() {
-  return <View style={styles.sheetContent}><Text style={styles.sheetTitle}>Plan details</Text><View style={styles.stats}><Stat label="Protocol" value="48h Fast → 4h Refeed" /><Stat label="Cycle" value="2 of 5" /><Stat label="Auto-start" value="Off" /><Stat label="Next" value="Refeed at 48h" /></View><Text style={styles.builderNote}>One cycle includes one fast and its refeed. Your plan completes after the final refeed.</Text></View>;
+function PlanDetailsSheet({ timer }: { timer: TimerSnapshot }) {
+  const next = timer.phaseKind === 'fast' && timer.protocol.refeedDurationMs ? 'Refeed when you end this fast' : timer.phaseKind === 'refeed' ? 'Next fast when you tap Start' : 'Plan ends when this fast ends';
+  return <View style={styles.sheetContent}><Text style={styles.sheetTitle}>Plan details</Text><View style={styles.stats}><Stat label="Protocol" value={protocolDetail(timer.protocol)} /><Stat label="Current phase" value={timer.phaseKind === 'fast' ? 'Fasting' : 'Refeeding'} /><Stat label="Cycle" value={timer.protocol.repeatCount ? `${timer.cycleNumber} of ${timer.protocol.repeatCount}` : `${timer.cycleNumber} · ongoing`} /><Stat label="Started" value={timeOfDay(timer.startedAt)} /><Stat label="Target" value={timer.targetReached ? `${readableDuration(timer.elapsedMs)} elapsed` : timeOfDay(timer.targetAt)} /><Stat label="Next" value={next} /></View><Text style={styles.builderNote}>Your timer is based on the saved start and target time, so it stays correct when the app is closed.</Text></View>;
 }
 
-function EndFastSheet({ onClose, onEndStandalone, onFinishPlan, onStartRefeed, rolling }: { onClose: () => void; onEndStandalone: () => void; onFinishPlan: () => void; onStartRefeed: () => void; rolling: boolean }) {
-  return <View style={styles.sheetContent}><Text style={styles.sheetTitle}>End your fast?</Text><Text style={styles.summary}>You fasted for 18h 42m.</Text>{rolling ? <><View style={styles.rolloverNotice}><Text style={styles.protocol}>Part of a rolling plan</Text><Text style={styles.protocolDetail}>Start your 4h refeed now, or finish this plan early.</Text></View><PrimaryButton label="Start Refeed" onPress={onStartRefeed} /><SecondaryButton label="Finish Plan" onPress={onFinishPlan} /></> : <><Text style={styles.builderNote}>This saves the fast as a standalone History entry.</Text><PrimaryButton label="Finish Fast" onPress={onEndStandalone} /></>}<PressableScale accessibilityRole="button" onPress={onClose}><Text style={styles.quietAction}>Continue fasting</Text></PressableScale></View>;
+function EndFastSheet({ onClose, onEndStandalone, onFinishPlan, onStartRefeed, rolling, timer }: { onClose: () => void; onEndStandalone: () => void; onFinishPlan: () => void; onStartRefeed: () => void; rolling: boolean; timer: TimerSnapshot }) {
+  const isFast = timer.phaseKind === 'fast';
+  const elapsed = readableDuration(timer.elapsedMs);
+  const timing = timer.targetReached ? `${elapsed} elapsed · target reached` : `${elapsed} elapsed · ${readableDuration(timer.remainingMs)} left`;
+  return <View style={styles.sheetContent}><Text style={styles.sheetTitle}>{isFast ? 'End your fast?' : 'End your refeed?'}</Text><Text style={styles.summary}>{timing}</Text>{rolling ? <><View style={styles.rolloverNotice}><Text style={styles.protocol}>Part of {timer.planName}</Text><Text style={styles.protocolDetail}>{isFast && timer.protocol.refeedDurationMs ? `Start your ${readableDuration(timer.protocol.refeedDurationMs)} refeed now, or finish this plan early.` : 'End this phase, then choose when to start the next one.'}</Text></View>{isFast && timer.protocol.refeedDurationMs ? <PrimaryButton label="Start Refeed" onPress={onStartRefeed} /> : <PrimaryButton label="End phase" onPress={onEndStandalone} />}<SecondaryButton label="Finish Plan" onPress={onFinishPlan} /></> : <><Text style={styles.builderNote}>This saves the fast as a standalone History entry.</Text><PrimaryButton label={isFast ? 'Finish Fast' : 'Finish Refeed'} onPress={onEndStandalone} /></>}<PressableScale accessibilityRole="button" onPress={onClose}><Text style={styles.quietAction}>Continue {isFast ? 'fasting' : 'refeeding'}</Text></PressableScale></View>;
 }
 
 function ReactionToast({ onDismiss }: { onDismiss: () => void }) { return <PressableScale accessibilityRole="button" onPress={onDismiss} style={styles.toast}><Text style={styles.toastText}>Reaction sent to Sam 🔥</Text></PressableScale>; }
@@ -176,6 +201,7 @@ function ChoiceGroup({ label, onSelect, selected, values }: { label: string; onS
   </View>;
 }
 
+// Paused pairing flow retained for the later Together release.
 function TogetherScreen({ flow, onBackToToday, onFlowChange, onOpenReaction, onPair, onStartOwnFast, partner }: { flow: PairFlow; onBackToToday: () => void; onFlowChange: (flow: PairFlow) => void; onOpenReaction: () => void; onPair: (partner: Partner) => void; onStartOwnFast: () => void; partner: Partner | null }) {
   if (flow === 'creatorSignIn') return <PairPage back={() => onFlowChange('none')} title="Sign in to pair" detail="An account lets one partner find you. Solo fasting never needs one." icon><SecondaryButton label="Continue with Google" onPress={() => onFlowChange('creatorInvite')} /><SecondaryButton label="Continue with Apple" onPress={() => onFlowChange('creatorInvite')} /><Text style={styles.builderNote}>We store your name and photo so your partner knows who joined. No health data leaves the phone.</Text><Text style={styles.quietAction}>Fast alone instead</Text></PairPage>;
   if (flow === 'creatorInvite') return <PairPage back={() => onFlowChange('none')} title="Invite your partner"><View style={styles.inviteCode}><Text style={styles.choiceLabel}>Invite code</Text><Text style={styles.code}>K7F9Q</Text></View><PrimaryButton label="Share invite" onPress={() => onFlowChange('recipientInvite')} /><Text style={styles.builderNote}>Expires in 24h. One person only.</Text><Text style={styles.dividerNote}>Your fast does not wait for them — start whenever you like and they can join the pair later.</Text><SecondaryButton label="Start my fast now" onPress={onStartOwnFast} /></PairPage>;
@@ -189,11 +215,38 @@ function PairPage({ back, children, detail, eyebrow, icon, title }: PropsWithChi
   return <View style={styles.content}>{back && <PressableScale accessibilityRole="button" onPress={back}><Text style={styles.closeText}>‹ Back</Text></PressableScale>}{eyebrow && <Text style={styles.time}>{eyebrow}</Text>}{icon && <View style={styles.largeAvatar} />}<Text style={styles.question}>{title}</Text>{detail !== undefined && <Text style={styles.summary}>{detail}</Text>}{children}</View>;
 }
 
-function HistoryScreen({ onBack, onOpenFast, onOpenPlan, view }: { onBack: () => void; onOpenFast: () => void; onOpenPlan: () => void; view: HistoryView }) {
-  if (view === 'plan') return <View style={styles.content}><PressableScale accessibilityRole="button" onPress={onBack}><Text style={styles.closeText}>‹ History</Text></PressableScale><Text style={styles.question}>Rolling 48:4</Text><Text style={styles.summary}>Completed · Aug 23 – Sep 1</Text><View style={styles.stats}><Stat label="Cycle 1" value="48h fast · 4h refeed" /><Stat label="Cycle 2" value="48h fast · 4h refeed" /><Stat label="Cycle 3" value="Ended early at 31h" /><Stat label="Cycle 4" value="48h fast · 4h refeed" /><Stat label="Cycle 5" value="48h fast · 4h refeed" /></View><Text style={styles.builderNote}>Five cycles. Each cycle includes a fast and its refeed.</Text><SecondaryButton label="Do it again" /></View>;
-  if (view === 'fast') return <View style={styles.content}><PressableScale accessibilityRole="button" onPress={onBack}><Text style={styles.closeText}>‹ History</Text></PressableScale><Text style={styles.question}>36h Fast</Text><Text style={styles.summary}>Aug 20 · Ended early</Text><View style={styles.stats}><Stat label="Actual" value="31h 24m" /><Stat label="Target" value="36h" /><Stat label="Started" value="Mon 8:14 PM" /><Stat label="Ended" value="Tue 3:38 AM" /></View><Text style={styles.builderNote}>Ended early is still recorded clearly—without framing it as a failure.</Text><SecondaryButton label="Do it again" /></View>;
-  return <View style={styles.content}><Text style={styles.question}>History</Text><Text style={styles.summary}>A simple record of your plans and fasts.</Text><Text style={styles.sectionLabel}>RECENT</Text><View style={styles.historyList}><HistoryRow date="Sep 2" detail="24h Fast" status="Completed" /><HistoryRow date="Aug 23 – Sep 1" detail="Rolling 48:4" onPress={onOpenPlan} status="5 cycles complete" /><HistoryRow date="Aug 20" detail="36h Fast" onPress={onOpenFast} status="Ended early · 31h" /><HistoryRow date="Aug 14" detail="Rolling 24:2" onPress={onOpenPlan} status="Cancelled · 2 cycles" /><HistoryRow date="Aug 9" detail="18:6" status="Completed" /></View><Text style={styles.builderNote}>Open an entry for the full detail. Nothing is scored against anyone else.</Text></View>;
+function HistoryScreen({ entries, onBack, onOpenEntry, selectedId }: { entries: HistoryItem[]; onBack: () => void; onOpenEntry: (id: string) => void; selectedId: string | null }) {
+  const selected = selectedId ? entries.find((entry) => entry.id === selectedId) : null;
+  if (selected) return <HistoryDetail entry={selected} onBack={onBack} />;
+  return <View style={styles.content}><Text style={styles.question}>History</Text><Text style={styles.summary}>Every finished fast stays on this device.</Text><Text style={styles.sectionLabel}>RECENT</Text><View style={styles.historyList}>{entries.length === 0 ? <Text style={styles.builderNote}>Your completed fasts will appear here.</Text> : entries.map((entry) => <HistoryRow key={entry.id} date={historyDate(entry.startedAt)} detail={entry.name} onPress={() => onOpenEntry(entry.id)} status={historyStatus(entry)} />)}</View><Text style={styles.builderNote}>History is saved locally, even when the app is closed.</Text></View>;
 }
+
+function HistoryDetail({ entry, onBack }: { entry: HistoryItem; onBack: () => void }) {
+  const rolling = entry.protocol.repeatCount !== null && entry.protocol.repeatCount > 1;
+  return <View style={styles.content}>
+    <PressableScale accessibilityRole="button" onPress={onBack}><Text style={styles.closeText}>‹ History</Text></PressableScale>
+    <Text style={styles.question}>{entry.name}</Text>
+    <Text style={styles.summary}>{historyStatus(entry)} · {historyDateRange(entry.startedAt, entry.endedAt)}</Text>
+    <View style={styles.stats}>
+      <Stat label="Actual" value={readableDuration(entry.durationMs)} />
+      <Stat label="Protocol" value={protocolDetail(entry.protocol)} />
+      <Stat label="Started" value={historyDateTime(entry.startedAt)} />
+      <Stat label="Ended" value={entry.endedAt ? historyDateTime(entry.endedAt) : '—'} />
+      {rolling && <Stat label="Completed cycles" value={`${entry.completedCycles} of ${entry.protocol.repeatCount}`} />}
+    </View>
+    <Text style={styles.builderNote}>{entry.status === 'completed' ? 'Recorded from the saved start and end time.' : 'Ended early is recorded clearly—without framing it as a failure.'}</Text>
+  </View>;
+}
+
+function historyStatus(entry: HistoryItem) {
+  if (entry.status === 'completed') return 'Completed';
+  if (entry.status === 'cancelled') return 'Ended early';
+  return 'Ended';
+}
+
+function historyDate(timestamp: number) { return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+function historyDateTime(timestamp: number) { return new Date(timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+function historyDateRange(startedAt: number, endedAt: number | null) { return endedAt && historyDate(endedAt) !== historyDate(startedAt) ? `${historyDate(startedAt)} – ${historyDate(endedAt)}` : historyDate(startedAt); }
 
 function HistoryRow({ date, detail, onPress, status }: { date: string; detail: string; onPress?: () => void; status: string }) {
   return <PressableScale accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} style={styles.historyRow}><View><Text style={styles.planName}>{detail}</Text><Text style={styles.planDetail}>{date}</Text></View><View style={styles.historyStatus}><Text style={styles.planDetail}>{status}</Text>{onPress && <Text style={styles.rowAdornment}>›</Text>}</View></PressableScale>;
@@ -204,6 +257,8 @@ function SettingsScreen({ darkMode, onClose, onRemovePartner, onToggleDarkMode, 
 }
 
 function StateLabel({ children, colour }: PropsWithChildren<{ colour: string }>) { return <Text style={[styles.stateLabel, { color: colour }]}>{children}</Text>; }
+function readableDuration(milliseconds: number) { const minutes = Math.floor(Math.abs(milliseconds) / 60000); const hours = Math.floor(minutes / 60); return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`; }
+function timeOfDay(timestamp: number) { return new Date(timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
 function Timer({ primary, secondary }: { primary: string; secondary: string }) { return <Text style={styles.timer}>{primary}<Text style={styles.timerSeconds}>{secondary}</Text></Text>; }
 function ProgressBar({ colour, value }: { colour: string; value: `${number}%` }) { return <View style={styles.progressTrack}><View style={[styles.progressValue, { backgroundColor: colour, width: value }]} /></View>; }
 function PlanDetail({ onPress, text }: { onPress: () => void; text: string }) { return <PressableScale accessibilityRole="button" onPress={onPress} style={styles.planDetailCard}><Text style={styles.cardText}>{text}</Text><Text style={styles.planDetail}>Plan details ›</Text></PressableScale>; }
@@ -219,7 +274,7 @@ function PressableScale({ children, onPress, style, ...props }: PropsWithChildre
   return <Pressable {...props} onPress={onPress} onPressIn={() => animate(motion.pressedScale, motion.pressIn)} onPressOut={() => animate(1, motion.pressOut)}><Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View></Pressable>;
 }
 
-function BottomTabs({ activeTab, onSelect }: { activeTab: AppTab; onSelect: (tab: AppTab) => void }) { return <View style={styles.tabs}>{(['today', 'together', 'history'] as AppTab[]).map((tab) => <PressableScale accessibilityLabel={`Open ${tab}`} key={tab} onPress={() => onSelect(tab)}><Text style={activeTab === tab ? styles.activeTab : styles.tab}>{tab === 'today' ? 'Today' : tab === 'together' ? 'Together' : 'History'}</Text></PressableScale>)}</View>; }
+function BottomTabs({ activeTab, onSelect }: { activeTab: AppTab; onSelect: (tab: AppTab) => void }) { return <View style={styles.tabs}>{(['today', 'history'] as AppTab[]).map((tab) => <PressableScale accessibilityLabel={`Open ${tab}`} key={tab} onPress={() => onSelect(tab)}><Text style={activeTab === tab ? styles.activeTab : styles.tab}>{tab === 'today' ? 'Today' : 'History'}</Text></PressableScale>)}</View>; }
 
 function createStyles() { return StyleSheet.create({
   safeArea: { backgroundColor: palette.surface, flex: 1 }, refeedCanvas: { backgroundColor: palette.canvas }, screen: { flex: 1, paddingHorizontal: 20 },

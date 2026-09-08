@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AppTab, HistoryView, PairFlow, Partner, Sheet } from './types';
+import type { AppTab, PairFlow, Partner, Sheet } from './types';
 import type { TodayState } from '../today/model';
 
 const partnerStorageKey = '@fasting/partner';
@@ -14,7 +14,6 @@ export function useAppFlow() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [reactionToast, setReactionToast] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [historyView, setHistoryView] = useState<HistoryView>('list');
   const [darkMode, setDarkMode] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('24h Fast');
 
@@ -36,6 +35,6 @@ export function useAppFlow() {
   };
 
   return { state, setState, tab, setTab, pairFlow, setPairFlow, partner, sheet, setSheet,
-    reactionToast, setReactionToast, settingsOpen, setSettingsOpen, historyView, setHistoryView,
+    reactionToast, setReactionToast, settingsOpen, setSettingsOpen,
     darkMode, setDarkMode, selectedPlan, returnToIdle, choosePlan, startBuilder, savePartner };
 }
