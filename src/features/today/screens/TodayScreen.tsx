@@ -1,6 +1,6 @@
 import { useRef, useState, type PropsWithChildren } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, darkColors } from '../../../shared/theme/colors';
@@ -74,9 +74,10 @@ function IdleState({ onPlanSelect, onStart, selectedPlan }: { onPlanSelect: (nam
     <Text style={styles.question}>How long are you fasting?</Text>
     <View style={styles.planList}>{plans.map((item) => {
       const selected = item.name === selectedPlan;
+      const opensBuilder = item.name === 'Rolling' || item.name === 'Custom';
       return <PressableScale accessibilityLabel={`Choose ${item.name}`} key={item.name} onPress={() => onPlanSelect(item.name)} style={[styles.planRow, selected && styles.selectedPlan]}>
         <View><Text style={styles.planName}>{item.name}</Text><Text style={styles.planDetail}>{item.detail}</Text></View>
-        <Text style={[styles.rowAdornment, selected && styles.selectedAdornment]}>{selected ? '✓' : '›'}</Text>
+        <Text style={[styles.rowAdornment, selected && styles.selectedAdornment]}>{selected ? '✓' : opensBuilder ? '›' : ''}</Text>
       </PressableScale>;
     })}</View>
     <Text style={styles.starting}>Starting: {plan.name} · {plan.detail}</Text>
@@ -135,23 +136,40 @@ function PlanBuilder({ onClose, onStart, variant }: { onClose: () => void; onSta
   const [fast, setFast] = useState(rolling ? '48h' : '36h');
   const [refeed, setRefeed] = useState(rolling ? '4h' : 'None');
   const [repeat, setRepeat] = useState(rolling ? '5' : 'No');
-  const summary = rolling
-    ? `${fast} Fast → ${refeed} Refeed`
-    : refeed === 'None' ? `${fast} Fast` : `${fast} Fast → ${refeed} Refeed`;
-  const subcopy = rolling
-    ? `Repeat ${repeat === 'Forever' ? 'forever' : `${repeat} times`} · ${repeat === '5' ? '10 days' : 'your pace'}`
-    : repeat === 'No' ? `single fast${refeed === 'None' ? ', no refeed' : ` · ${refeed} refeed`}` : `Repeat ${repeat} times`;
+  const [customFast, setCustomFast] = useState('');
+  const [customRefeed, setCustomRefeed] = useState('');
+  const [customRepeat, setCustomRepeat] = useState('');
+  const fastHours = hoursForChoice(fast, customFast);
+  const refeedHours = refeed === 'None' ? null : hoursForChoice(refeed, customRefeed);
+  const repeatCount = repeat === 'Forever' ? null : repeat === 'No' ? 1 : repeat === 'Custom' ? wholeNumber(customRepeat) : wholeNumber(repeat);
+  const canStart = fastHours !== null && (refeed === 'None' || refeedHours !== null) && (repeat === 'Forever' || repeatCount !== null);
+  const summary = fastHours === null ? 'Choose a fast duration' : `${fastHours}h Fast${refeed === 'None' ? '' : refeedHours === null ? ' → choose refeed' : ` → ${refeedHours}h Refeed`}`;
+  const subcopy = repeat === 'Forever' ? 'Repeat forever' : repeatCount === null ? 'Choose a repeat count' : repeatCount === 1 ? 'One cycle' : `Repeat ${repeatCount} times`;
+  const startPlan = () => {
+    if (!canStart || fastHours === null || (refeed !== 'None' && refeedHours === null)) return;
+    const protocol = {
+      version: 1 as const,
+      name: rolling ? `Rolling ${fastHours}h:${refeedHours}h` : `Custom ${fastHours}h${refeedHours ? `:${refeedHours}h` : ''}`,
+      fastDurationMs: fastHours * 60 * 60 * 1000,
+      refeedDurationMs: refeedHours === null ? null : refeedHours * 60 * 60 * 1000,
+      repeatCount,
+    };
+    onStart(protocol);
+  };
 
   return <View style={styles.builder}>
     <View style={styles.builderHeader}>
       <PressableScale accessibilityRole="button" onPress={onClose}><Text style={styles.closeText}>✕  Close</Text></PressableScale>
       <Text style={styles.builderTitle}>{rolling ? 'Rolling plan' : 'Custom fast'}</Text>
     </View>
-    <ChoiceGroup label={rolling ? 'Fast' : 'Fast for'} values={rolling ? ['24h', '36h', '48h', '···'] : ['20h', '24h', '36h', '···']} selected={fast} onSelect={setFast} />
-    <ChoiceGroup label={rolling ? 'Refeed' : 'Then refeed'} values={rolling ? ['1h', '4h', '8h', '···'] : ['None', '1h', '4h', '···']} selected={refeed} onSelect={setRefeed} />
-    <ChoiceGroup label="Repeat" values={rolling ? ['2', '3', '5', 'Forever'] : ['No', '2', '3', 'Forever']} selected={repeat} onSelect={setRepeat} />
+    <ChoiceGroup label={rolling ? 'Fast' : 'Fast for'} values={rolling ? ['24h', '36h', '48h'] : ['20h', '24h', '36h', 'Custom']} selected={fast} onSelect={setFast} />
+    {!rolling && fast === 'Custom' && <WholeNumberInput label="Custom fast length" onChange={setCustomFast} unit="hours" value={customFast} />}
+    <ChoiceGroup label={rolling ? 'Refeed' : 'Then refeed'} values={rolling ? ['1h', '4h', '8h'] : ['None', '1h', '4h', 'Custom']} selected={refeed} onSelect={setRefeed} />
+    {!rolling && refeed === 'Custom' && <WholeNumberInput label="Custom refeed length" onChange={setCustomRefeed} unit="hours" value={customRefeed} />}
+    <ChoiceGroup label="Repeat" values={rolling ? ['2', '3', '5', 'Forever'] : ['No', '2', '3', 'Forever', 'Custom']} selected={repeat} onSelect={setRepeat} />
+    {!rolling && repeat === 'Custom' && <WholeNumberInput label="Custom repeat count" onChange={setCustomRepeat} unit="cycles" value={customRepeat} />}
     <View style={styles.protocolCard}><Text style={styles.protocol}>{summary}</Text><Text style={styles.protocolDetail}>{subcopy}</Text></View>
-    <PrimaryButton label={rolling ? 'Start Plan' : 'Start Fast'} onPress={() => onStart({ version: 1, name: rolling ? `Rolling ${fast}:${refeed}` : `Custom ${fast}`, fastDurationMs: (Number.parseInt(fast, 10) || (rolling ? 48 : 36)) * 60 * 60 * 1000, refeedDurationMs: refeed === 'None' ? null : (Number.parseInt(refeed, 10) || 4) * 60 * 60 * 1000, repeatCount: repeat === 'Forever' ? null : repeat === 'No' ? 1 : (Number.parseInt(repeat, 10) || 1) })} />
+    <PrimaryButton disabled={!canStart} label={rolling ? 'Start Plan' : 'Start Fast'} onPress={startPlan} />
     <Text style={styles.builderNote}>{rolling ? 'One cycle = one fast + its refeed. The plan completes after the final refeed.' : 'A single fast is one History entry. A rolling plan is one plan entry with cycles inside it.'}</Text>
   </View>;
 }
@@ -199,6 +217,28 @@ function ChoiceGroup({ label, onSelect, selected, values }: { label: string; onS
     <Text style={styles.choiceLabel}>{label}</Text>
     <View style={styles.choices}>{values.map((value) => <PressableScale accessibilityLabel={`Choose ${value}`} key={value} onPress={() => onSelect(value)} style={[styles.choice, value === selected && styles.selectedChoice]}><Text style={[styles.choiceText, value === selected && styles.selectedChoiceText]}>{value}</Text></PressableScale>)}</View>
   </View>;
+}
+
+function WholeNumberInput({ label, onChange, unit, value }: { label: string; onChange: (value: string) => void; unit: string; value: string }) {
+  const invalid = value.length > 0 && wholeNumber(value) === null;
+  return <View style={styles.customInputGroup}>
+    <Text style={styles.inputLabel}>{label}</Text>
+    <View style={[styles.numberInput, invalid && styles.numberInputInvalid]}>
+      <TextInput accessibilityLabel={label} keyboardType="number-pad" onChangeText={(next) => onChange(next.replace(/[^0-9]/g, ''))} placeholder="Enter a number" placeholderTextColor={palette.subtle} style={styles.numberInputText} value={value} />
+      <Text style={styles.inputUnit}>{unit}</Text>
+    </View>
+    <Text style={[styles.inputHint, invalid && styles.inputHintInvalid]}>{invalid ? 'Use a whole number greater than 0.' : `Whole numbers greater than 0 · ${unit}`}</Text>
+  </View>;
+}
+
+function wholeNumber(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) ? number : null;
+}
+
+function hoursForChoice(choice: string, customValue: string) {
+  return choice === 'Custom' ? wholeNumber(customValue) : wholeNumber(choice.replace('h', ''));
 }
 
 // Paused pairing flow retained for the later Together release.
@@ -264,14 +304,14 @@ function ProgressBar({ colour, value }: { colour: string; value: `${number}%` })
 function PlanDetail({ onPress, text }: { onPress: () => void; text: string }) { return <PressableScale accessibilityRole="button" onPress={onPress} style={styles.planDetailCard}><Text style={styles.cardText}>{text}</Text><Text style={styles.planDetail}>Plan details ›</Text></PressableScale>; }
 function PartnerCard({ detail, name, status, statusColour }: { detail: string; name: string; status: string; statusColour: string }) { return <View style={styles.partnerCard}><View style={styles.partnerAvatar} /><View><Text style={styles.planName}>{name}</Text><Text style={styles.partnerDetail}><Text style={{ color: statusColour }}>{status}</Text> · {detail}</Text></View></View>; }
 function Stat({ label, value }: { label: string; value: string }) { return <View style={styles.stat}><Text style={styles.planName}>{label}</Text><Text style={styles.planDetail}>{value}</Text></View>; }
-function PrimaryButton({ label, onPress }: { label: string; onPress?: () => void }) { return <PressableScale accessibilityRole="button" onPress={onPress} style={styles.primaryButton}><Text style={styles.primaryText}>{label}</Text></PressableScale>; }
+function PrimaryButton({ disabled = false, label, onPress }: { disabled?: boolean; label: string; onPress?: () => void }) { return <PressableScale accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.primaryButton, disabled && styles.primaryButtonDisabled]}><Text style={[styles.primaryText, disabled && styles.primaryTextDisabled]}>{label}</Text></PressableScale>; }
 function SecondaryButton({ label, onPress }: { label: string; onPress?: () => void }) { return <PressableScale accessibilityRole="button" onPress={onPress} style={styles.secondaryButton}><Text style={styles.secondaryText}>{label}</Text></PressableScale>; }
 function DangerButton({ label, onPress }: { label: string; onPress?: () => void }) { return <PressableScale accessibilityRole="button" onPress={onPress} style={styles.dangerButton}><Text style={styles.dangerText}>{label}</Text></PressableScale>; }
 
-function PressableScale({ children, onPress, style, ...props }: PropsWithChildren<{ accessibilityLabel?: string; accessibilityRole?: 'button'; onPress?: () => void; style?: object }>) {
+function PressableScale({ children, disabled = false, onPress, style, ...props }: PropsWithChildren<{ accessibilityLabel?: string; accessibilityRole?: 'button'; disabled?: boolean; onPress?: () => void; style?: object }>) {
   const scale = useRef(new Animated.Value(1)).current;
   const animate = (toValue: number, duration: number) => Animated.timing(scale, { toValue, duration, useNativeDriver: true }).start();
-  return <Pressable {...props} onPress={onPress} onPressIn={() => animate(motion.pressedScale, motion.pressIn)} onPressOut={() => animate(1, motion.pressOut)}><Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View></Pressable>;
+  return <Pressable {...props} disabled={disabled} onPress={onPress} onPressIn={() => { if (!disabled) animate(motion.pressedScale, motion.pressIn); }} onPressOut={() => { if (!disabled) animate(1, motion.pressOut); }}><Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View></Pressable>;
 }
 
 function BottomTabs({ activeTab, onSelect }: { activeTab: AppTab; onSelect: (tab: AppTab) => void }) { return <View style={styles.tabs}>{(['today', 'history'] as AppTab[]).map((tab) => <PressableScale accessibilityLabel={`Open ${tab}`} key={tab} onPress={() => onSelect(tab)}><Text style={activeTab === tab ? styles.activeTab : styles.tab}>{tab === 'today' ? 'Today' : 'History'}</Text></PressableScale>)}</View>; }
@@ -281,11 +321,11 @@ function createStyles() { return StyleSheet.create({
   header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 20, paddingTop: 8 }, time: { color: palette.subtle, fontSize: 12 }, settingsLink: { alignItems: 'center', flexDirection: 'row', gap: 8 }, avatar: { borderColor: palette.subtle, borderRadius: 99, borderStyle: 'dashed', borderWidth: 1.5, height: 36, width: 36 }, settingsButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 99, borderWidth: 1.5, height: 40, justifyContent: 'center', width: 40 }, settingsIcon: { height: 18, position: 'relative', width: 18 }, settingLine: { backgroundColor: palette.ink, height: 1.5, left: 0, position: 'absolute', right: 0 }, settingLineOne: { top: 2 }, settingLineTwo: { top: 8 }, settingLineThree: { top: 14 }, settingDot: { backgroundColor: palette.surface, borderColor: palette.ink, borderRadius: 4, borderWidth: 1.5, height: 7, position: 'absolute', width: 7 }, settingDotOne: { right: 2, top: -1 }, settingDotTwo: { left: 3, top: 5 }, settingDotThree: { right: 5, top: 11 },
   content: { flex: 1, gap: 14 }, question: { color: palette.ink, fontSize: 28, fontWeight: '600', letterSpacing: -0.5, lineHeight: 33 }, stateLabel: { fontSize: 13, fontWeight: '600', letterSpacing: 2.1, marginTop: 2 },
   planList: { borderTopColor: palette.divider, borderTopWidth: 1 }, planRow: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 66, paddingHorizontal: 2, paddingVertical: 10 }, selectedPlan: { backgroundColor: palette.canvas, paddingHorizontal: 10 }, planName: { color: palette.ink, fontSize: 16 }, planDetail: { color: palette.subtle, fontSize: 13, marginTop: 3 }, rowAdornment: { color: palette.subtle, fontSize: 21 }, selectedAdornment: { color: palette.accent }, starting: { color: palette.subtle, fontSize: 14, lineHeight: 20 }, quietAction: { color: palette.muted, fontSize: 15, paddingVertical: 8, textAlign: 'center' },
-  primaryButton: { alignItems: 'center', backgroundColor: palette.ink, borderRadius: 999, justifyContent: 'center', minHeight: 54, paddingHorizontal: 20 }, primaryText: { color: palette.surface, fontSize: 17, fontWeight: '600' }, secondaryButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, justifyContent: 'center', minHeight: 52, paddingHorizontal: 20 }, secondaryText: { color: palette.ink, fontSize: 16, fontWeight: '500' }, dangerButton: { alignItems: 'center', borderColor: palette.danger, borderRadius: 999, borderStyle: 'dashed', borderWidth: 1.5, justifyContent: 'center', minHeight: 48, paddingHorizontal: 20 }, dangerText: { color: palette.danger, fontSize: 15, fontWeight: '500' },
+  primaryButton: { alignItems: 'center', backgroundColor: palette.ink, borderRadius: 999, justifyContent: 'center', minHeight: 54, paddingHorizontal: 20 }, primaryButtonDisabled: { backgroundColor: palette.divider }, primaryText: { color: palette.surface, fontSize: 17, fontWeight: '600' }, primaryTextDisabled: { color: palette.muted }, secondaryButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, justifyContent: 'center', minHeight: 52, paddingHorizontal: 20 }, secondaryText: { color: palette.ink, fontSize: 16, fontWeight: '500' }, dangerButton: { alignItems: 'center', borderColor: palette.danger, borderRadius: 999, borderStyle: 'dashed', borderWidth: 1.5, justifyContent: 'center', minHeight: 48, paddingHorizontal: 20 }, dangerText: { color: palette.danger, fontSize: 15, fontWeight: '500' },
   timerTapTarget: { alignSelf: 'flex-start' }, timer: { color: palette.ink, fontSize: 52, fontVariant: ['tabular-nums'], letterSpacing: -1.6, lineHeight: 56 }, timerSeconds: { color: palette.subtle, fontSize: 26, letterSpacing: -0.5 }, summary: { color: palette.muted, fontSize: 16, lineHeight: 22, marginTop: -6 }, progressTrack: { backgroundColor: palette.divider, borderRadius: 99, height: 10, overflow: 'hidden' }, progressValue: { borderRadius: 99, height: '100%' },
   planDetailCard: { alignItems: 'center', borderColor: palette.divider, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, flexDirection: 'row', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 14 }, cardText: { color: palette.ink, fontSize: 15 }, partnerCard: { alignItems: 'center', borderColor: palette.divider, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 12 }, partnerAvatar: { backgroundColor: palette.canvas, borderRadius: 99, height: 36, width: 36 }, partnerDetail: { color: palette.muted, fontSize: 14, marginTop: 3 },
   stats: { borderTopColor: palette.divider, borderTopWidth: 1 }, stat: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 53 }, tabs: { borderTopColor: palette.ink, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-around', marginTop: 12, paddingBottom: 12, paddingTop: 12 }, tab: { color: palette.subtle, fontSize: 14 }, activeTab: { color: palette.ink, fontSize: 14, fontWeight: '600' },
-  builder: { flex: 1, gap: 24, paddingTop: 12 }, builderHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, closeText: { color: palette.subtle, fontSize: 13 }, builderTitle: { color: palette.subtle, fontSize: 13 }, choiceGroup: { gap: 8 }, choiceLabel: { color: palette.subtle, fontSize: 14 }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10 }, selectedChoice: { backgroundColor: palette.accent, borderColor: palette.accent }, choiceText: { color: palette.ink, fontSize: 15 }, selectedChoiceText: { color: palette.surface, fontWeight: '600' }, protocolCard: { alignItems: 'center', borderColor: palette.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 5, padding: 14 }, protocol: { color: palette.ink, fontSize: 16 }, protocolDetail: { color: palette.muted, fontSize: 14 }, builderNote: { color: palette.subtle, fontSize: 14, lineHeight: 20 },
+  builder: { flex: 1, gap: 24, paddingTop: 12 }, builderHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, closeText: { color: palette.subtle, fontSize: 13 }, builderTitle: { color: palette.subtle, fontSize: 13 }, choiceGroup: { gap: 8 }, choiceLabel: { color: palette.subtle, fontSize: 14 }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10 }, selectedChoice: { backgroundColor: palette.accent, borderColor: palette.accent }, choiceText: { color: palette.ink, fontSize: 15 }, selectedChoiceText: { color: palette.surface, fontWeight: '600' }, customInputGroup: { gap: 6, marginTop: -12 }, inputLabel: { color: palette.ink, fontSize: 14, fontWeight: '500' }, numberInput: { alignItems: 'center', borderColor: palette.divider, borderRadius: 14, borderStyle: 'dashed', borderWidth: 1.5, flexDirection: 'row', minHeight: 52, paddingHorizontal: 14 }, numberInputInvalid: { borderColor: palette.danger }, numberInputText: { color: palette.ink, flex: 1, fontSize: 16, paddingVertical: 9 }, inputUnit: { color: palette.muted, fontSize: 15, marginLeft: 12 }, inputHint: { color: palette.subtle, fontSize: 13, lineHeight: 18 }, inputHintInvalid: { color: palette.danger }, protocolCard: { alignItems: 'center', borderColor: palette.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 5, padding: 14 }, protocol: { color: palette.ink, fontSize: 16 }, protocolDetail: { color: palette.muted, fontSize: 14 }, builderNote: { color: palette.subtle, fontSize: 14, lineHeight: 20 },
   largeAvatar: { backgroundColor: palette.canvas, borderRadius: 99, height: 64, marginTop: 6, width: 64 }, inviteCode: { alignItems: 'center', borderColor: palette.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, gap: 6, padding: 18 }, code: { color: palette.ink, fontSize: 34, letterSpacing: 4 }, dividerNote: { borderTopColor: palette.divider, borderTopWidth: 1, color: palette.subtle, fontSize: 14, lineHeight: 20, paddingTop: 12 }, selectedProtocol: { borderColor: palette.accent, backgroundColor: palette.canvas, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 }, ownProtocol: { borderColor: palette.ink, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 }, pairedNotice: { backgroundColor: palette.surface, borderColor: palette.success, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(26,26,26,0.36)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 }, sheet: { backgroundColor: palette.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 14, paddingBottom: 28, paddingHorizontal: 20, paddingTop: 10 }, handle: { alignSelf: 'center', backgroundColor: palette.divider, borderRadius: 99, height: 4, width: 40 }, sheetContent: { gap: 14 }, sheetTitle: { color: palette.ink, fontSize: 24, fontWeight: '600', letterSpacing: -0.3 }, reactions: { flexDirection: 'row', gap: 10, justifyContent: 'space-between' }, reaction: { alignItems: 'center', borderColor: palette.divider, borderRadius: 99, borderWidth: 1.5, height: 52, justifyContent: 'center', width: 52 }, selectedReaction: { backgroundColor: palette.canvas, borderColor: palette.accent }, reactionText: { fontSize: 22 }, rolloverNotice: { backgroundColor: palette.surface, borderColor: palette.success, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 4, padding: 12 }, toast: { alignSelf: 'center', backgroundColor: palette.ink, borderRadius: 99, bottom: 82, paddingHorizontal: 18, paddingVertical: 12, position: 'absolute' }, toastText: { color: palette.surface, fontSize: 14, fontWeight: '500' },
   sectionLabel: { color: palette.subtle, fontSize: 12, fontWeight: '600', letterSpacing: 1.8, marginTop: 6 }, historyList: { borderTopColor: palette.divider, borderTopWidth: 1 }, historyRow: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 64, paddingVertical: 9 }, historyStatus: { alignItems: 'center', flexDirection: 'row', gap: 5, maxWidth: '48%' }, toggle: { backgroundColor: palette.divider, borderRadius: 99, height: 24, justifyContent: 'center', padding: 3, width: 42 }, toggleOn: { backgroundColor: palette.ink }, toggleKnob: { backgroundColor: palette.surface, borderRadius: 99, height: 18, width: 18 }, toggleKnobOn: { alignSelf: 'flex-end' },
