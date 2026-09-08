@@ -1,72 +1,41 @@
-import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRef, useState, type PropsWithChildren } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors } from '../../../shared/theme/colors';
+import { colors, darkColors } from '../../../shared/theme/colors';
 import { motion } from '../../../shared/theme/motion';
+import { useAppFlow } from '../../app/useAppFlow';
+import type { AppTab, HistoryView, PairFlow, Partner, Sheet } from '../../app/types';
+import { plans } from '../model';
 
-type TodayState = 'idle' | 'fasting' | 'refeeding' | 'transition' | 'complete' | 'rollingBuilder' | 'customBuilder';
-type FastPlan = { detail: string; name: string };
-type AppTab = 'today' | 'together' | 'history';
-type PairFlow = 'none' | 'creatorSignIn' | 'creatorInvite' | 'recipientInvite' | 'recipientPlan' | 'paired';
-type Partner = { name: string; role: 'creator' | 'recipient' };
-type Sheet = 'reaction' | 'planDetails' | 'endFast' | null;
-type HistoryView = 'list' | 'plan' | 'fast';
+type Palette = typeof colors | typeof darkColors;
 
-const partnerStorageKey = '@fasting/partner';
-
-const plans: FastPlan[] = [
-  { name: '16:8', detail: '16h Fast · 8h eating window' },
-  { name: '18:6', detail: '18h Fast · 6h eating window' },
-  { name: 'OMAD', detail: '23h Fast · 1h Refeed' },
-  { name: '24h Fast', detail: 'one fast, no repeat' },
-  { name: 'Rolling', detail: 'fast + refeed, repeated' },
-  { name: 'Custom', detail: 'set your own durations' },
-];
+let palette: Palette = colors;
+let styles: ReturnType<typeof createStyles>;
 
 /** The first production flow: wireframe 3b, states T1 through T5. */
 export function TodayScreen() {
-  const [state, setState] = useState<TodayState>('idle');
-  const [tab, setTab] = useState<AppTab>('today');
-  const [pairFlow, setPairFlow] = useState<PairFlow>('none');
-  const [partner, setPartner] = useState<Partner | null>(null);
-  const [sheet, setSheet] = useState<Sheet>(null);
-  const [reactionToast, setReactionToast] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [historyView, setHistoryView] = useState<HistoryView>('list');
-  const [darkMode, setDarkMode] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('24h Fast');
-  const returnToIdle = (plan = '24h Fast') => { setSelectedPlan(plan); setState('idle'); };
-  const choosePlan = (plan: string) => {
-    if (plan === 'Rolling') return setState('rollingBuilder');
-    if (plan === 'Custom') return setState('customBuilder');
-    setSelectedPlan(plan);
-  };
+  const flow = useAppFlow();
+  const { state, setState, tab, setTab, pairFlow, setPairFlow, partner, sheet, setSheet, reactionToast,
+    setReactionToast, settingsOpen, setSettingsOpen, historyView, setHistoryView, darkMode, setDarkMode,
+    selectedPlan, returnToIdle, choosePlan, startBuilder, savePartner } = flow;
+  palette = darkMode ? darkColors : colors;
+  styles = createStyles();
   const isBuilder = state === 'rollingBuilder' || state === 'customBuilder';
-  const savePartner = (next: Partner) => {
-    setPartner(next);
-    setPairFlow('paired');
-    void AsyncStorage.setItem(partnerStorageKey, JSON.stringify(next));
-  };
-
-  useEffect(() => {
-    void AsyncStorage.getItem(partnerStorageKey).then((saved) => {
-      if (saved) { setPartner(JSON.parse(saved) as Partner); setPairFlow('paired'); }
-    });
-  }, []);
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, state === 'refeeding' || state === 'transition' ? styles.refeedCanvas : undefined]}>
       <View style={styles.screen}>
+        <StatusBar style={darkMode ? 'light' : 'dark'} />
         {!isBuilder && <AppHeader onOpenSettings={() => setSettingsOpen(true)} />}
         {tab === 'today' && state === 'idle' && <IdleState selectedPlan={selectedPlan} onPlanSelect={choosePlan} onStart={() => setState('fasting')} onTogether={() => setTab('together')} partner={partner?.name} />}
         {tab === 'today' && state === 'fasting' && <FastingState onOpenEnd={() => setSheet('endFast')} onOpenPlan={() => setSheet('planDetails')} onOpenReaction={() => setSheet('reaction')} partner={partner?.name} />}
         {tab === 'today' && state === 'refeeding' && <RefeedingState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onOpenReaction={() => setSheet('reaction')} onStartNext={() => setState('fasting')} onTimerComplete={() => setState('transition')} partner={partner?.name} />}
         {tab === 'today' && state === 'transition' && <TransitionState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onStartNext={() => setState('fasting')} partner={partner?.name} />}
         {tab === 'today' && state === 'complete' && <CompleteState onDone={() => returnToIdle()} onRepeat={() => returnToIdle('Rolling')} />}
-        {state === 'rollingBuilder' && <PlanBuilder variant="rolling" onClose={() => setState('idle')} onStart={() => setState('fasting')} />}
-        {state === 'customBuilder' && <PlanBuilder variant="custom" onClose={() => setState('idle')} onStart={() => setState('fasting')} />}
+        {state === 'rollingBuilder' && <PlanBuilder variant="rolling" onClose={() => setState('idle')} onStart={() => startBuilder('Rolling')} />}
+        {state === 'customBuilder' && <PlanBuilder variant="custom" onClose={() => setState('idle')} onStart={() => startBuilder('Custom')} />}
         {tab === 'together' && <TogetherScreen flow={pairFlow} onBackToToday={() => setTab('today')} onFlowChange={setPairFlow} onOpenReaction={() => setSheet('reaction')} onPair={savePartner} onStartOwnFast={() => { setState('fasting'); setTab('today'); }} partner={partner} />}
         {tab === 'history' && <HistoryScreen view={historyView} onBack={() => setHistoryView('list')} onOpenFast={() => setHistoryView('fast')} onOpenPlan={() => setHistoryView('plan')} />}
         {!isBuilder && <BottomTabs activeTab={tab} onSelect={setTab} />}
@@ -103,28 +72,28 @@ function IdleState({ onPlanSelect, onStart, onTogether, partner, selectedPlan }:
 
 function FastingState({ onOpenEnd, onOpenPlan, onOpenReaction, partner }: { onOpenEnd: () => void; onOpenPlan: () => void; onOpenReaction: () => void; partner?: string }) {
   return <View style={styles.content}>
-    <StateLabel colour={colors.accent}>FASTING</StateLabel><Timer primary="18:42" secondary=":13" />
-    <Text style={styles.summary}>18h 42m of 24h · 5h 17m left</Text><ProgressBar colour={colors.accent} value="78%" />
-    <PlanDetail onPress={onOpenPlan} text="Rolling 48:4 · Cycle 2 of 5" />{partner && <PartnerCard name={partner} status="Fasting" detail="17h 58m of 24h" statusColour={colors.accent} />}
+    <StateLabel colour={palette.accent}>FASTING</StateLabel><Timer primary="18:42" secondary=":13" />
+    <Text style={styles.summary}>18h 42m of 24h · 5h 17m left</Text><ProgressBar colour={palette.accent} value="78%" />
+    <PlanDetail onPress={onOpenPlan} text="Rolling 48:4 · Cycle 2 of 5" />{partner && <PartnerCard name={partner} status="Fasting" detail="17h 58m of 24h" statusColour={palette.accent} />}
     <SecondaryButton label="🙂  Send reaction" onPress={onOpenReaction} /><DangerButton label="End fast" onPress={onOpenEnd} />
   </View>;
 }
 
 function RefeedingState({ onEndPlan, onOpenPlan, onOpenReaction, onStartNext, onTimerComplete, partner }: { onEndPlan: () => void; onOpenPlan: () => void; onOpenReaction: () => void; onStartNext: () => void; onTimerComplete: () => void; partner?: string }) {
   return <View style={styles.content}>
-    <StateLabel colour={colors.success}>REFEEDING</StateLabel>
+    <StateLabel colour={palette.success}>REFEEDING</StateLabel>
     <PressableScale accessibilityLabel="Preview refeed completed" onPress={onTimerComplete} style={styles.timerTapTarget}><Timer primary="01:14" secondary=":22" /></PressableScale>
-    <Text style={styles.summary}>1h 14m of 4h · 2h 45m left</Text><ProgressBar colour={colors.success} value="30%" />
-    <PlanDetail onPress={onOpenPlan} text="Rolling 48:4 · Cycle 2 of 5" />{partner && <PartnerCard name={partner} status="Fasting" detail="36m left" statusColour={colors.accent} />}
+    <Text style={styles.summary}>1h 14m of 4h · 2h 45m left</Text><ProgressBar colour={palette.success} value="30%" />
+    <PlanDetail onPress={onOpenPlan} text="Rolling 48:4 · Cycle 2 of 5" />{partner && <PartnerCard name={partner} status="Fasting" detail="36m left" statusColour={palette.accent} />}
     <PrimaryButton label="Start next fast now" onPress={onStartNext} /><SecondaryButton label="🙂  Send reaction" onPress={onOpenReaction} /><DangerButton label="End plan" onPress={onEndPlan} />
   </View>;
 }
 
 function TransitionState({ onEndPlan, onOpenPlan, onStartNext, partner }: { onEndPlan: () => void; onOpenPlan: () => void; onStartNext: () => void; partner?: string }) {
   return <View style={styles.content}>
-    <StateLabel colour={colors.success}>REFEED COMPLETE</StateLabel><Text style={styles.question}>Ready for your next fast</Text>
-    <Text style={styles.summary}>4h Refeed finished 6:12 PM · Cycle 2 of 5 complete</Text><ProgressBar colour={colors.success} value="100%" />
-    <PlanDetail onPress={onOpenPlan} text="Next: 48h Fast · Cycle 3 of 5" />{partner && <PartnerCard name={partner} status="Refeeding" detail="2h 10m of 4h" statusColour={colors.success} />}
+    <StateLabel colour={palette.success}>REFEED COMPLETE</StateLabel><Text style={styles.question}>Ready for your next fast</Text>
+    <Text style={styles.summary}>4h Refeed finished 6:12 PM · Cycle 2 of 5 complete</Text><ProgressBar colour={palette.success} value="100%" />
+    <PlanDetail onPress={onOpenPlan} text="Next: 48h Fast · Cycle 3 of 5" />{partner && <PartnerCard name={partner} status="Refeeding" detail="2h 10m of 4h" statusColour={palette.success} />}
     <PrimaryButton label="Start next fast" onPress={onStartNext} /><DangerButton label="End plan" onPress={onEndPlan} />
     <Text style={styles.starting}>Auto-start is off, so nothing counts until you tap Start.</Text>
   </View>;
@@ -132,7 +101,7 @@ function TransitionState({ onEndPlan, onOpenPlan, onStartNext, partner }: { onEn
 
 function CompleteState({ onDone, onRepeat }: { onDone: () => void; onRepeat: () => void }) {
   return <View style={styles.content}>
-    <StateLabel colour={colors.ink}>PLAN COMPLETE</StateLabel><Text style={styles.question}>Rolling 48:4</Text><Text style={styles.summary}>5 of 5 cycles</Text>
+    <StateLabel colour={palette.ink}>PLAN COMPLETE</StateLabel><Text style={styles.question}>Rolling 48:4</Text><Text style={styles.summary}>5 of 5 cycles</Text>
     <View style={styles.stats}><Stat label="Fasting" value="240h 12m" /><Stat label="Refeeding" value="20h 05m" /><Stat label="Dates" value="Aug 23 – Sep 1" /><Stat label="Partner" value="Sam · paired throughout" /></View>
     <PrimaryButton label="Done" onPress={onDone} /><SecondaryButton label="Do it again" onPress={onRepeat} />
     <Text style={styles.starting}>Do it again loads the protocol on Today. It does not start it.</Text>
@@ -212,7 +181,7 @@ function TogetherScreen({ flow, onBackToToday, onFlowChange, onOpenReaction, onP
   if (flow === 'creatorInvite') return <PairPage back={() => onFlowChange('none')} title="Invite your partner"><View style={styles.inviteCode}><Text style={styles.choiceLabel}>Invite code</Text><Text style={styles.code}>K7F9Q</Text></View><PrimaryButton label="Share invite" onPress={() => onFlowChange('recipientInvite')} /><Text style={styles.builderNote}>Expires in 24h. One person only.</Text><Text style={styles.dividerNote}>Your fast does not wait for them — start whenever you like and they can join the pair later.</Text><SecondaryButton label="Start my fast now" onPress={onStartOwnFast} /></PairPage>;
   if (flow === 'recipientInvite') return <PairPage eyebrow="Invite from Alex" title="Alex wants to fast with you" detail=""><View style={styles.protocolCard}><Text style={styles.protocol}>Suggested protocol</Text><Text style={styles.protocolDetail}>48h Fast → 4h Refeed · Repeat 5 times</Text></View><PrimaryButton label="Join pair" onPress={() => onFlowChange('recipientPlan')} /><Text style={styles.builderNote}>Joining pairs you two. It does not start any timer.</Text><Text style={styles.quietAction}>Not now</Text></PairPage>;
   if (flow === 'recipientPlan') return <View style={styles.content}><Text style={styles.question}>Your plan</Text><Text style={styles.summary}>Alex's protocol is only a suggestion. Pick what you'll actually do.</Text><PressableScale onPress={() => {}} style={styles.selectedProtocol}><Text style={styles.protocol}>Use this plan</Text><Text style={styles.protocolDetail}>48h Fast → 4h Refeed · Repeat 5</Text></PressableScale><PressableScale onPress={onBackToToday} style={styles.ownProtocol}><Text style={styles.protocol}>Choose my own</Text><Text style={styles.protocolDetail}>presets, rolling or custom</Text></PressableScale><PrimaryButton label="Start Fast" onPress={() => { onPair({ name: 'Alex', role: 'recipient' }); onStartOwnFast(); }} /><Text style={styles.builderNote}>Nothing runs until you tap Start.</Text></View>;
-  if (flow === 'paired' && partner) return <View style={styles.content}><PartnerCard name={partner.name} status="Inactive" detail="no fast running" statusColour={colors.subtle} /><View style={styles.pairedNotice}><Text style={styles.protocol}>{partner.name} joined your pair</Text><Text style={styles.protocolDetail}>You each start your own timer.</Text></View><View style={styles.stats}><Stat label="Your plan" value="48h Fast → 4h Refeed" /><Stat label={`${partner.name}'s plan`} value="not started yet" /><Stat label="Pair since" value="Sep 2026" /></View><SecondaryButton label="🙂  Send reaction" onPress={onOpenReaction} /><Text style={styles.builderNote}>Your timers are independent. A partner can encourage you, but never starts or stops your fast.</Text></View>;
+  if (flow === 'paired' && partner) return <View style={styles.content}><PartnerCard name={partner.name} status="Inactive" detail="no fast running" statusColour={palette.subtle} /><View style={styles.pairedNotice}><Text style={styles.protocol}>{partner.name} joined your pair</Text><Text style={styles.protocolDetail}>You each start your own timer.</Text></View><View style={styles.stats}><Stat label="Your plan" value="48h Fast → 4h Refeed" /><Stat label={`${partner.name}'s plan`} value="not started yet" /><Stat label="Pair since" value="Sep 2026" /></View><SecondaryButton label="🙂  Send reaction" onPress={onOpenReaction} /><Text style={styles.builderNote}>Your timers are independent. A partner can encourage you, but never starts or stops your fast.</Text></View>;
   return <View style={styles.content}><Text style={styles.question}>Fast with someone</Text><Text style={styles.summary}>One accountability partner. You each keep your own timer — nothing they do starts or stops your fast.</Text><PrimaryButton label="Connect a partner" onPress={() => onFlowChange('creatorSignIn')} /><SecondaryButton label="Enter an invite code" onPress={() => onFlowChange('recipientInvite')} /><Text style={styles.builderNote}>Sign-in happens before an invite exists.</Text></View>;
 }
 
@@ -252,18 +221,21 @@ function PressableScale({ children, onPress, style, ...props }: PropsWithChildre
 
 function BottomTabs({ activeTab, onSelect }: { activeTab: AppTab; onSelect: (tab: AppTab) => void }) { return <View style={styles.tabs}>{(['today', 'together', 'history'] as AppTab[]).map((tab) => <PressableScale accessibilityLabel={`Open ${tab}`} key={tab} onPress={() => onSelect(tab)}><Text style={activeTab === tab ? styles.activeTab : styles.tab}>{tab === 'today' ? 'Today' : tab === 'together' ? 'Together' : 'History'}</Text></PressableScale>)}</View>; }
 
-const styles = StyleSheet.create({
-  safeArea: { backgroundColor: colors.surface, flex: 1 }, refeedCanvas: { backgroundColor: '#FAF6EE' }, screen: { flex: 1, paddingHorizontal: 20 },
-  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 20, paddingTop: 8 }, time: { color: colors.subtle, fontSize: 12 }, settingsLink: { alignItems: 'center', flexDirection: 'row', gap: 8 }, avatar: { borderColor: colors.subtle, borderRadius: 99, borderStyle: 'dashed', borderWidth: 1.5, height: 36, width: 36 }, settingsButton: { alignItems: 'center', borderColor: colors.ink, borderRadius: 99, borderWidth: 1.5, height: 40, justifyContent: 'center', width: 40 }, settingsIcon: { height: 18, position: 'relative', width: 18 }, settingLine: { backgroundColor: colors.ink, height: 1.5, left: 0, position: 'absolute', right: 0 }, settingLineOne: { top: 2 }, settingLineTwo: { top: 8 }, settingLineThree: { top: 14 }, settingDot: { backgroundColor: colors.surface, borderColor: colors.ink, borderRadius: 4, borderWidth: 1.5, height: 7, position: 'absolute', width: 7 }, settingDotOne: { right: 2, top: -1 }, settingDotTwo: { left: 3, top: 5 }, settingDotThree: { right: 5, top: 11 },
-  content: { flex: 1, gap: 14 }, question: { color: colors.ink, fontSize: 28, fontWeight: '600', letterSpacing: -0.5, lineHeight: 33 }, stateLabel: { fontSize: 13, fontWeight: '600', letterSpacing: 2.1, marginTop: 2 },
-  planList: { borderTopColor: colors.divider, borderTopWidth: 1 }, planRow: { alignItems: 'center', borderBottomColor: colors.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 66, paddingHorizontal: 2, paddingVertical: 10 }, selectedPlan: { backgroundColor: '#F9F4EC', paddingHorizontal: 10 }, planName: { color: colors.ink, fontSize: 16 }, planDetail: { color: colors.subtle, fontSize: 13, marginTop: 3 }, rowAdornment: { color: '#A09A90', fontSize: 21 }, selectedAdornment: { color: colors.accent }, starting: { color: colors.subtle, fontSize: 14, lineHeight: 20 }, quietAction: { color: colors.muted, fontSize: 15, paddingVertical: 8, textAlign: 'center' },
-  primaryButton: { alignItems: 'center', backgroundColor: colors.ink, borderRadius: 999, justifyContent: 'center', minHeight: 54, paddingHorizontal: 20 }, primaryText: { color: colors.surface, fontSize: 17, fontWeight: '600' }, secondaryButton: { alignItems: 'center', borderColor: colors.ink, borderRadius: 999, borderWidth: 1.5, justifyContent: 'center', minHeight: 52, paddingHorizontal: 20 }, secondaryText: { color: colors.ink, fontSize: 16, fontWeight: '500' }, dangerButton: { alignItems: 'center', borderColor: colors.danger, borderRadius: 999, borderStyle: 'dashed', borderWidth: 1.5, justifyContent: 'center', minHeight: 48, paddingHorizontal: 20 }, dangerText: { color: colors.danger, fontSize: 15, fontWeight: '500' },
-  timerTapTarget: { alignSelf: 'flex-start' }, timer: { color: colors.ink, fontSize: 52, fontVariant: ['tabular-nums'], letterSpacing: -1.6, lineHeight: 56 }, timerSeconds: { color: colors.subtle, fontSize: 26, letterSpacing: -0.5 }, summary: { color: colors.muted, fontSize: 16, lineHeight: 22, marginTop: -6 }, progressTrack: { backgroundColor: '#E3DFD6', borderRadius: 99, height: 10, overflow: 'hidden' }, progressValue: { borderRadius: 99, height: '100%' },
-  planDetailCard: { alignItems: 'center', borderColor: colors.divider, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, flexDirection: 'row', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 14 }, cardText: { color: colors.ink, fontSize: 15 }, partnerCard: { alignItems: 'center', borderColor: colors.divider, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 12 }, partnerAvatar: { backgroundColor: '#F2EFE8', borderRadius: 99, height: 36, width: 36 }, partnerDetail: { color: colors.muted, fontSize: 14, marginTop: 3 },
-  stats: { borderTopColor: colors.divider, borderTopWidth: 1 }, stat: { alignItems: 'center', borderBottomColor: colors.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 53 }, tabs: { borderTopColor: colors.ink, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-around', marginTop: 12, paddingBottom: 12, paddingTop: 12 }, tab: { color: colors.subtle, fontSize: 14 }, activeTab: { color: colors.ink, fontSize: 14, fontWeight: '600' },
-  builder: { flex: 1, gap: 24, paddingTop: 12 }, builderHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, closeText: { color: colors.subtle, fontSize: 13 }, builderTitle: { color: colors.subtle, fontSize: 13 }, choiceGroup: { gap: 8 }, choiceLabel: { color: colors.subtle, fontSize: 14 }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { borderColor: colors.ink, borderRadius: 999, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10 }, selectedChoice: { backgroundColor: colors.accent, borderColor: colors.accent }, choiceText: { color: colors.ink, fontSize: 15 }, selectedChoiceText: { color: colors.surface, fontWeight: '600' }, protocolCard: { alignItems: 'center', borderColor: colors.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 5, padding: 14 }, protocol: { color: colors.ink, fontSize: 16 }, protocolDetail: { color: colors.muted, fontSize: 14 }, builderNote: { color: colors.subtle, fontSize: 14, lineHeight: 20 },
-  largeAvatar: { backgroundColor: '#F2EFE8', borderRadius: 99, height: 64, marginTop: 6, width: 64 }, inviteCode: { alignItems: 'center', borderColor: colors.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, gap: 6, padding: 18 }, code: { color: colors.ink, fontSize: 34, letterSpacing: 4 }, dividerNote: { borderTopColor: colors.divider, borderTopWidth: 1, color: colors.subtle, fontSize: 14, lineHeight: 20, paddingTop: 12 }, selectedProtocol: { borderColor: colors.accent, backgroundColor: '#F9F4EC', borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 }, ownProtocol: { borderColor: colors.ink, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 }, pairedNotice: { backgroundColor: '#F1F3EA', borderColor: colors.success, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(26,26,26,0.36)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 }, sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 14, paddingBottom: 28, paddingHorizontal: 20, paddingTop: 10 }, handle: { alignSelf: 'center', backgroundColor: '#D8D2C8', borderRadius: 99, height: 4, width: 40 }, sheetContent: { gap: 14 }, sheetTitle: { color: colors.ink, fontSize: 24, fontWeight: '600', letterSpacing: -0.3 }, reactions: { flexDirection: 'row', gap: 10, justifyContent: 'space-between' }, reaction: { alignItems: 'center', borderColor: '#E3DFD6', borderRadius: 99, borderWidth: 1.5, height: 52, justifyContent: 'center', width: 52 }, selectedReaction: { backgroundColor: '#F9F4EC', borderColor: colors.accent }, reactionText: { fontSize: 22 }, rolloverNotice: { backgroundColor: '#F6F8F0', borderColor: colors.success, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 4, padding: 12 }, toast: { alignSelf: 'center', backgroundColor: colors.ink, borderRadius: 99, bottom: 82, paddingHorizontal: 18, paddingVertical: 12, position: 'absolute' }, toastText: { color: colors.surface, fontSize: 14, fontWeight: '500' },
-  sectionLabel: { color: colors.subtle, fontSize: 12, fontWeight: '600', letterSpacing: 1.8, marginTop: 6 }, historyList: { borderTopColor: colors.divider, borderTopWidth: 1 }, historyRow: { alignItems: 'center', borderBottomColor: colors.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 64, paddingVertical: 9 }, historyStatus: { alignItems: 'center', flexDirection: 'row', gap: 5, maxWidth: '48%' }, toggle: { backgroundColor: '#E3DFD6', borderRadius: 99, height: 24, justifyContent: 'center', padding: 3, width: 42 }, toggleOn: { backgroundColor: colors.ink }, toggleKnob: { backgroundColor: colors.surface, borderRadius: 99, height: 18, width: 18 }, toggleKnobOn: { alignSelf: 'flex-end' },
-  themeOverlay: { alignItems: 'flex-end', flex: 1, paddingRight: 20, paddingTop: 72 }, themePicker: { backgroundColor: colors.surface, borderColor: colors.ink, borderRadius: 18, borderWidth: 1.5, elevation: 8, gap: 5, padding: 14, width: 210, zIndex: 1 }, themeTitle: { color: colors.ink, fontSize: 17, fontWeight: '600' }, themeCopy: { color: colors.muted, fontSize: 13, lineHeight: 18, marginBottom: 5 }, themeOption: { alignItems: 'center', borderRadius: 10, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 11 }, themeOptionSelected: { backgroundColor: '#F9F4EC' },
+function createStyles() { return StyleSheet.create({
+  safeArea: { backgroundColor: palette.surface, flex: 1 }, refeedCanvas: { backgroundColor: palette.canvas }, screen: { flex: 1, paddingHorizontal: 20 },
+  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 20, paddingTop: 8 }, time: { color: palette.subtle, fontSize: 12 }, settingsLink: { alignItems: 'center', flexDirection: 'row', gap: 8 }, avatar: { borderColor: palette.subtle, borderRadius: 99, borderStyle: 'dashed', borderWidth: 1.5, height: 36, width: 36 }, settingsButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 99, borderWidth: 1.5, height: 40, justifyContent: 'center', width: 40 }, settingsIcon: { height: 18, position: 'relative', width: 18 }, settingLine: { backgroundColor: palette.ink, height: 1.5, left: 0, position: 'absolute', right: 0 }, settingLineOne: { top: 2 }, settingLineTwo: { top: 8 }, settingLineThree: { top: 14 }, settingDot: { backgroundColor: palette.surface, borderColor: palette.ink, borderRadius: 4, borderWidth: 1.5, height: 7, position: 'absolute', width: 7 }, settingDotOne: { right: 2, top: -1 }, settingDotTwo: { left: 3, top: 5 }, settingDotThree: { right: 5, top: 11 },
+  content: { flex: 1, gap: 14 }, question: { color: palette.ink, fontSize: 28, fontWeight: '600', letterSpacing: -0.5, lineHeight: 33 }, stateLabel: { fontSize: 13, fontWeight: '600', letterSpacing: 2.1, marginTop: 2 },
+  planList: { borderTopColor: palette.divider, borderTopWidth: 1 }, planRow: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 66, paddingHorizontal: 2, paddingVertical: 10 }, selectedPlan: { backgroundColor: palette.canvas, paddingHorizontal: 10 }, planName: { color: palette.ink, fontSize: 16 }, planDetail: { color: palette.subtle, fontSize: 13, marginTop: 3 }, rowAdornment: { color: palette.subtle, fontSize: 21 }, selectedAdornment: { color: palette.accent }, starting: { color: palette.subtle, fontSize: 14, lineHeight: 20 }, quietAction: { color: palette.muted, fontSize: 15, paddingVertical: 8, textAlign: 'center' },
+  primaryButton: { alignItems: 'center', backgroundColor: palette.ink, borderRadius: 999, justifyContent: 'center', minHeight: 54, paddingHorizontal: 20 }, primaryText: { color: palette.surface, fontSize: 17, fontWeight: '600' }, secondaryButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, justifyContent: 'center', minHeight: 52, paddingHorizontal: 20 }, secondaryText: { color: palette.ink, fontSize: 16, fontWeight: '500' }, dangerButton: { alignItems: 'center', borderColor: palette.danger, borderRadius: 999, borderStyle: 'dashed', borderWidth: 1.5, justifyContent: 'center', minHeight: 48, paddingHorizontal: 20 }, dangerText: { color: palette.danger, fontSize: 15, fontWeight: '500' },
+  timerTapTarget: { alignSelf: 'flex-start' }, timer: { color: palette.ink, fontSize: 52, fontVariant: ['tabular-nums'], letterSpacing: -1.6, lineHeight: 56 }, timerSeconds: { color: palette.subtle, fontSize: 26, letterSpacing: -0.5 }, summary: { color: palette.muted, fontSize: 16, lineHeight: 22, marginTop: -6 }, progressTrack: { backgroundColor: palette.divider, borderRadius: 99, height: 10, overflow: 'hidden' }, progressValue: { borderRadius: 99, height: '100%' },
+  planDetailCard: { alignItems: 'center', borderColor: palette.divider, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, flexDirection: 'row', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 14 }, cardText: { color: palette.ink, fontSize: 15 }, partnerCard: { alignItems: 'center', borderColor: palette.divider, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 12 }, partnerAvatar: { backgroundColor: palette.canvas, borderRadius: 99, height: 36, width: 36 }, partnerDetail: { color: palette.muted, fontSize: 14, marginTop: 3 },
+  stats: { borderTopColor: palette.divider, borderTopWidth: 1 }, stat: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 53 }, tabs: { borderTopColor: palette.ink, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-around', marginTop: 12, paddingBottom: 12, paddingTop: 12 }, tab: { color: palette.subtle, fontSize: 14 }, activeTab: { color: palette.ink, fontSize: 14, fontWeight: '600' },
+  builder: { flex: 1, gap: 24, paddingTop: 12 }, builderHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, closeText: { color: palette.subtle, fontSize: 13 }, builderTitle: { color: palette.subtle, fontSize: 13 }, choiceGroup: { gap: 8 }, choiceLabel: { color: palette.subtle, fontSize: 14 }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 10 }, selectedChoice: { backgroundColor: palette.accent, borderColor: palette.accent }, choiceText: { color: palette.ink, fontSize: 15 }, selectedChoiceText: { color: palette.surface, fontWeight: '600' }, protocolCard: { alignItems: 'center', borderColor: palette.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 5, padding: 14 }, protocol: { color: palette.ink, fontSize: 16 }, protocolDetail: { color: palette.muted, fontSize: 14 }, builderNote: { color: palette.subtle, fontSize: 14, lineHeight: 20 },
+  largeAvatar: { backgroundColor: palette.canvas, borderRadius: 99, height: 64, marginTop: 6, width: 64 }, inviteCode: { alignItems: 'center', borderColor: palette.ink, borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, gap: 6, padding: 18 }, code: { color: palette.ink, fontSize: 34, letterSpacing: 4 }, dividerNote: { borderTopColor: palette.divider, borderTopWidth: 1, color: palette.subtle, fontSize: 14, lineHeight: 20, paddingTop: 12 }, selectedProtocol: { borderColor: palette.accent, backgroundColor: palette.canvas, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 }, ownProtocol: { borderColor: palette.ink, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 }, pairedNotice: { backgroundColor: palette.surface, borderColor: palette.success, borderRadius: 16, borderWidth: 1.5, gap: 5, padding: 14 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(26,26,26,0.36)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 }, sheet: { backgroundColor: palette.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 14, paddingBottom: 28, paddingHorizontal: 20, paddingTop: 10 }, handle: { alignSelf: 'center', backgroundColor: palette.divider, borderRadius: 99, height: 4, width: 40 }, sheetContent: { gap: 14 }, sheetTitle: { color: palette.ink, fontSize: 24, fontWeight: '600', letterSpacing: -0.3 }, reactions: { flexDirection: 'row', gap: 10, justifyContent: 'space-between' }, reaction: { alignItems: 'center', borderColor: palette.divider, borderRadius: 99, borderWidth: 1.5, height: 52, justifyContent: 'center', width: 52 }, selectedReaction: { backgroundColor: palette.canvas, borderColor: palette.accent }, reactionText: { fontSize: 22 }, rolloverNotice: { backgroundColor: palette.surface, borderColor: palette.success, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1.5, gap: 4, padding: 12 }, toast: { alignSelf: 'center', backgroundColor: palette.ink, borderRadius: 99, bottom: 82, paddingHorizontal: 18, paddingVertical: 12, position: 'absolute' }, toastText: { color: palette.surface, fontSize: 14, fontWeight: '500' },
+  sectionLabel: { color: palette.subtle, fontSize: 12, fontWeight: '600', letterSpacing: 1.8, marginTop: 6 }, historyList: { borderTopColor: palette.divider, borderTopWidth: 1 }, historyRow: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 64, paddingVertical: 9 }, historyStatus: { alignItems: 'center', flexDirection: 'row', gap: 5, maxWidth: '48%' }, toggle: { backgroundColor: palette.divider, borderRadius: 99, height: 24, justifyContent: 'center', padding: 3, width: 42 }, toggleOn: { backgroundColor: palette.ink }, toggleKnob: { backgroundColor: palette.surface, borderRadius: 99, height: 18, width: 18 }, toggleKnobOn: { alignSelf: 'flex-end' },
+  themeOverlay: { alignItems: 'flex-end', flex: 1, paddingRight: 20, paddingTop: 72 }, themePicker: { backgroundColor: palette.surface, borderColor: palette.ink, borderRadius: 18, borderWidth: 1.5, elevation: 8, gap: 5, padding: 14, width: 210, zIndex: 1 }, themeTitle: { color: palette.ink, fontSize: 17, fontWeight: '600' }, themeCopy: { color: palette.muted, fontSize: 13, lineHeight: 18, marginBottom: 5 }, themeOption: { alignItems: 'center', borderRadius: 10, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 11 }, themeOptionSelected: { backgroundColor: palette.canvas },
 });
+}
+
+styles = createStyles();

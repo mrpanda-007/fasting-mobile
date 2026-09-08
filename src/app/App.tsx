@@ -1,4 +1,3 @@
-import { StatusBar } from 'expo-status-bar';
 import { ArchitectsDaughter_400Regular, useFonts } from '@expo-google-fonts/architects-daughter';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TodayScreen } from '../features/today/screens/TodayScreen';
@@ -9,7 +8,6 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
       <TodayScreen />
     </SafeAreaProvider>
   );
