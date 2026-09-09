@@ -1,6 +1,6 @@
 import { useRef, useState, type PropsWithChildren } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, darkColors } from '../../../shared/theme/colors';
@@ -23,9 +23,9 @@ export function TodayScreen() {
   const flow = useAppFlow();
   const timer = useFastingTimer(flow.darkMode);
   const { state, setState, tab, setTab, sheet, setSheet, settingsOpen, setSettingsOpen, darkMode, setDarkMode,
-    selectedPlan, returnToIdle, choosePlan, startBuilder } = flow;
+    selectedPlan, returnToIdle, choosePlan, startBuilder, clearLocalPreferences } = flow;
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
-  const [settingsView, setSettingsView] = useState<'settings' | 'safety'>('settings');
+  const [settingsView, setSettingsView] = useState<'settings' | 'safety' | 'privacy'>('settings');
   palette = darkMode ? darkColors : colors;
   styles = createStyles();
   const isBuilder = state === 'rollingBuilder' || state === 'customBuilder';
@@ -38,12 +38,17 @@ export function TodayScreen() {
     await timer.startPendingPhase();
     setSheet(null);
   };
+  const deleteAllLocalData = () => Alert.alert(
+    'Delete all local data?',
+    'This permanently removes your fasting history, active timer, saved theme, widget data, and local notifications from this device.',
+    [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete data', style: 'destructive', onPress: () => { void (async () => { if (await timer.clearAllData()) { await clearLocalPreferences(); setState('idle'); setSettingsView('privacy'); } })(); } }],
+  );
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, state === 'refeeding' || state === 'transition' ? styles.refeedCanvas : undefined]}>
       <View style={styles.screen}>
         <StatusBar style={darkMode ? 'light' : 'dark'} />
-        {settingsOpen ? <SettingsScreen darkMode={darkMode} onBackToSettings={() => setSettingsView('settings')} onClose={() => { setSettingsOpen(false); setSettingsView('settings'); }} onOpenSafety={() => setSettingsView('safety')} onToggleDarkMode={() => setDarkMode(!darkMode)} view={settingsView} /> : <>
+        {settingsOpen ? <SettingsScreen darkMode={darkMode} onBackToSettings={() => setSettingsView('settings')} onClose={() => { setSettingsOpen(false); setSettingsView('settings'); }} onDeleteAllLocalData={deleteAllLocalData} onOpenPrivacy={() => setSettingsView('privacy')} onOpenSafety={() => setSettingsView('safety')} onToggleDarkMode={() => setDarkMode(!darkMode)} view={settingsView} /> : <>
           {!isBuilder && <AppHeader onOpenSettings={() => { setSettingsView('settings'); setSettingsOpen(true); }} />}
           {tab === 'today' && !timer.active && !timer.pending && state === 'idle' && <IdleState selectedPlan={selectedPlan} onPlanSelect={choosePlan} onStart={startSelectedPlan} />}
           {tab === 'today' && activeState === 'fasting' && timer.active && <FastingState timer={timer.active} onOpenEnd={() => setSheet('endFast')} onOpenPlan={() => setSheet('planDetails')} />}
@@ -289,15 +294,16 @@ function HistoryRow({ date, detail, onPress, status }: { date: string; detail: s
   return <PressableScale accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} style={styles.historyRow}><View><Text style={styles.planName}>{detail}</Text><Text style={styles.planDetail}>{date}</Text></View><View style={styles.historyStatus}><Text style={styles.planDetail}>{status}</Text>{onPress && <Text style={styles.rowAdornment}>›</Text>}</View></PressableScale>;
 }
 
-function SettingsScreen({ darkMode, onBackToSettings, onClose, onOpenSafety, onToggleDarkMode, view }: { darkMode: boolean; onBackToSettings: () => void; onClose: () => void; onOpenSafety: () => void; onToggleDarkMode: () => void; view: 'settings' | 'safety' }) {
+function SettingsScreen({ darkMode, onBackToSettings, onClose, onDeleteAllLocalData, onOpenPrivacy, onOpenSafety, onToggleDarkMode, view }: { darkMode: boolean; onBackToSettings: () => void; onClose: () => void; onDeleteAllLocalData: () => void; onOpenPrivacy: () => void; onOpenSafety: () => void; onToggleDarkMode: () => void; view: 'settings' | 'safety' | 'privacy' }) {
   if (view === 'safety') return <SafetyScreen onBack={onBackToSettings} onClose={onClose} />;
+  if (view === 'privacy') return <PrivacyScreen onBack={onBackToSettings} onClose={onClose} onDeleteAllLocalData={onDeleteAllLocalData} />;
   return <View style={styles.settingsContent}>
     <PressableScale accessibilityRole="button" onPress={onClose}><Text style={styles.closeText}>✕ Close</Text></PressableScale>
     <Text style={styles.question}>Settings</Text>
     <Text style={styles.sectionLabel}>APPEARANCE</Text>
     <View style={styles.stats}><PressableScale accessibilityLabel="Toggle dark mode" accessibilityRole="button" onPress={onToggleDarkMode} style={styles.stat}><Text style={styles.planName}>Dark mode</Text><View style={[styles.toggle, darkMode && styles.toggleOn]}><View style={[styles.toggleKnob, darkMode && styles.toggleKnobOn]} /></View></PressableScale></View>
     <Text style={styles.sectionLabel}>ABOUT</Text>
-    <View style={styles.stats}><PressableScale accessibilityLabel="Open about and safety" accessibilityRole="button" onPress={onOpenSafety} style={styles.stat}><Text style={styles.planName}>About & safety</Text><Text style={styles.rowAdornment}>›</Text></PressableScale><Stat label="Version" value="1.0.0" /></View>
+    <View style={styles.stats}><PressableScale accessibilityLabel="Open about and safety" accessibilityRole="button" onPress={onOpenSafety} style={styles.stat}><Text style={styles.planName}>About & safety</Text><Text style={styles.rowAdornment}>›</Text></PressableScale><PressableScale accessibilityLabel="Open privacy policy" accessibilityRole="button" onPress={onOpenPrivacy} style={styles.stat}><Text style={styles.planName}>Privacy</Text><Text style={styles.rowAdornment}>›</Text></PressableScale><Stat label="Version" value="1.0.0" /></View>
     <Text style={styles.builderNote}>Your theme choice is saved on this device.</Text>
   </View>;
 }
@@ -312,6 +318,21 @@ function SafetyScreen({ onBack, onClose }: { onBack: () => void; onClose: () => 
     <SafetySection title="How this timer works">A target time is not a recommendation. Your timer keeps going until you choose to end the phase.</SafetySection>
     <SafetySection title="Your data">Fasting history and preferences stay on this device. Notifications are optional.</SafetySection>
     <Text style={styles.builderNote}>Designed for adults who choose to fast. Not medical advice.</Text>
+    <SecondaryButton label="Close" onPress={onClose} />
+  </ScrollView>;
+}
+
+function PrivacyScreen({ onBack, onClose, onDeleteAllLocalData }: { onBack: () => void; onClose: () => void; onDeleteAllLocalData: () => void }) {
+  return <ScrollView contentContainerStyle={styles.safetyContent} showsVerticalScrollIndicator={false}>
+    <PressableScale accessibilityRole="button" onPress={onBack}><Text style={styles.closeText}>‹ Settings</Text></PressableScale>
+    <Text style={styles.question}>Privacy</Text>
+    <Text style={styles.safetyLead}>Last updated September 9, 2026. Fasting is designed to work without an account or remote sync.</Text>
+    <SafetySection title="Data stored on your device">Your fasting plans, phase timestamps, history, and local notification identifiers are stored in the app’s SQLite database. Your theme choice and any saved partner preference are stored in app preferences.</SafetySection>
+    <SafetySection title="Widget data">Android widgets keep the current plan name, phase, timestamps, cycle, and chosen theme in Android SharedPreferences so the widget can render when the app is closed.</SafetySection>
+    <SafetySection title="Notifications">If you allow notifications, the app schedules a local alert on your device when a fast or refeed target is reached. It does not send push notifications or notification data to us.</SafetySection>
+    <SafetySection title="Android backups">Android backup is enabled. If you turn on device backup, Android may copy app data to the backup provider associated with your device. We do not receive or control those backup copies.</SafetySection>
+    <SafetySection title="Retention and deletion">Local data remains until you delete it below or uninstall the app. Deleting all local data also cancels scheduled local notifications and clears widget information. Uninstalling removes app-local data; any Android backup copy is managed by your backup provider.</SafetySection>
+    <DangerButton label="Delete all local data" onPress={onDeleteAllLocalData} />
     <SecondaryButton label="Close" onPress={onClose} />
   </ScrollView>;
 }

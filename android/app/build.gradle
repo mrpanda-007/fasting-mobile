@@ -3,6 +3,16 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def fastingSigningProperties = new Properties()
+def fastingSigningPropertiesFile = rootProject.file("keystore.properties")
+if (fastingSigningPropertiesFile.exists()) {
+    fastingSigningPropertiesFile.withInputStream { fastingSigningProperties.load(it) }
+}
+def fastingUploadStoreFile = System.getenv("FASTING_UPLOAD_STORE_FILE") ?: fastingSigningProperties.getProperty("storeFile")
+def fastingUploadStorePassword = System.getenv("FASTING_UPLOAD_STORE_PASSWORD") ?: fastingSigningProperties.getProperty("storePassword")
+def fastingUploadKeyAlias = System.getenv("FASTING_UPLOAD_KEY_ALIAS") ?: fastingSigningProperties.getProperty("keyAlias")
+def fastingUploadKeyPassword = System.getenv("FASTING_UPLOAD_KEY_PASSWORD") ?: fastingSigningProperties.getProperty("keyPassword")
+def hasFastingUploadSigning = [fastingUploadStoreFile, fastingUploadStorePassword, fastingUploadKeyAlias, fastingUploadKeyPassword].every { it != null && !it.trim().isEmpty() }
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -104,15 +114,24 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (hasFastingUploadSigning) {
+                storeFile rootProject.file(fastingUploadStoreFile)
+                storePassword fastingUploadStorePassword
+                keyAlias fastingUploadKeyAlias
+                keyPassword fastingUploadKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (!hasFastingUploadSigning) {
+                throw new GradleException("Release signing is required. Set FASTING_UPLOAD_* environment variables or create android/keystore.properties.")
+            }
+            signingConfig signingConfigs.release
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

@@ -24,3 +24,8 @@ export async function scheduleTargetNotification(targetAt: number, phase: 'fast'
 export async function cancelTargetNotification(notificationId: string | null) {
   if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId);
 }
+
+/** This app only schedules target notifications, so clearing them is safe during a full data deletion. */
+export async function cancelAllTargetNotifications() {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+}

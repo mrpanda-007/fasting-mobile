@@ -47,4 +47,8 @@ internal object FastingWidgetStorage {
       darkMode = preferences.getBoolean(darkMode, false),
     )
   }
+
+  fun clear(context: Context) {
+    context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE).edit().clear().apply()
+  }
 }

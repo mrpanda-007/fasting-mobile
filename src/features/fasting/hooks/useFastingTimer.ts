@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { snapshotTimer, type ActiveTimerRecord, type TimerSnapshot } from '../../../domain/fasting/engine';
 import { protocolForPreset, type ProtocolSnapshot } from '../../../domain/fasting/protocol';
-import { cancelActivePlan, endActivePhase, getActiveNotificationId, getActiveTimer, getPendingPhase, listHistory, setActiveNotificationId, startPendingPhase, startPlan, type HistoryItem, type PendingPhase } from '../../../data/local/sqlite/fastingRepository';
-import { cancelTargetNotification, scheduleTargetNotification } from '../../../services/notifications/timerNotification';
-import { syncFastingWidget } from '../../../services/widgets/fastingWidget';
+import { cancelActivePlan, clearAllFastingData, endActivePhase, getActiveNotificationId, getActiveTimer, getPendingPhase, listHistory, setActiveNotificationId, startPendingPhase, startPlan, type HistoryItem, type PendingPhase } from '../../../data/local/sqlite/fastingRepository';
+import { cancelAllTargetNotifications, cancelTargetNotification, scheduleTargetNotification } from '../../../services/notifications/timerNotification';
+import { clearFastingWidget, syncFastingWidget } from '../../../services/widgets/fastingWidget';
 
 type FastingStore = { hydrated: boolean; active: TimerSnapshot | null; pending: PendingPhase | null; history: HistoryItem[]; error: string | null };
 
@@ -49,12 +49,25 @@ export function useFastingTimer(darkMode: boolean) {
     await cancelTargetNotification(notificationId);
     await cancelActivePlan();
   }), [execute]);
+  const clearAllData = useCallback(async (): Promise<boolean> => {
+    try {
+      await cancelAllTargetNotifications();
+      await clearAllFastingData();
+      await refresh();
+      clearFastingWidget();
+      return true;
+    } catch (error) {
+      setStore((current) => ({ ...current, error: error instanceof Error ? error.message : 'Unable to delete local data.' }));
+      return false;
+    }
+  }, [refresh]);
   return { ...store,
     startPreset: (name: string) => start(protocolForPreset(name)),
     startProtocol: start,
     endActivePhase: end,
     startPendingPhase: startPending,
     cancelPlan,
+    clearAllData,
     refresh,
   };
 }

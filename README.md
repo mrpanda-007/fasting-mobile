@@ -111,20 +111,20 @@ npm run android
 
 ### Build a local Android release
 
+Create a private Android upload key, then save its local configuration in
+`android/keystore.properties`. This file and the keystore are intentionally
+ignored and must never be committed. A release build fails rather than falling
+back to the public debug key when these credentials are missing.
+
 ```bash
-npx expo run:android --variant release --no-bundler
+cd android
+./gradlew app:bundleRelease
 ```
 
-The APK is written to:
+The Play-uploadable Android App Bundle is written to:
 
 ```text
-android/app/build/outputs/apk/release/app-release.apk
-```
-
-Install it to a connected Android device with:
-
-```bash
-adb install -r android/app/build/outputs/apk/release/app-release.apk
+android/app/build/outputs/bundle/release/app-release.aab
 ```
 
 ### Android native source and widgets

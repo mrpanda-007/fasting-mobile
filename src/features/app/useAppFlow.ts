@@ -39,8 +39,14 @@ export function useAppFlow() {
     setDarkModeState(next);
     void AsyncStorage.setItem(themeStorageKey, next ? 'dark' : 'light');
   };
+  const clearLocalPreferences = async () => {
+    await AsyncStorage.multiRemove([partnerStorageKey, themeStorageKey]);
+    setPartner(null);
+    setPairFlow('none');
+    setDarkModeState(false);
+  };
 
   return { state, setState, tab, setTab, pairFlow, setPairFlow, partner, sheet, setSheet,
     reactionToast, setReactionToast, settingsOpen, setSettingsOpen,
-    darkMode, setDarkMode, selectedPlan, returnToIdle, choosePlan, startBuilder, savePartner };
+    darkMode, setDarkMode, selectedPlan, returnToIdle, choosePlan, startBuilder, savePartner, clearLocalPreferences };
 }

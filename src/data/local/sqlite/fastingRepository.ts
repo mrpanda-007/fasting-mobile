@@ -97,6 +97,19 @@ export async function cancelActivePlan(now = Date.now()) {
   });
 }
 
+/** Removes all on-device fasting records in one transaction after the user confirms the action. */
+export async function clearAllFastingData() {
+  const db = await getDatabase();
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.execAsync(`
+      DELETE FROM active_timer;
+      DELETE FROM timer_events;
+      DELETE FROM phase_runs;
+      DELETE FROM plan_runs;
+    `);
+  });
+}
+
 export async function getPendingPhase(): Promise<PendingPhase | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<{ id: string; plan_id: string; kind: PhaseKind; name: string; protocol_json: string; cycle_number: number; planned_duration_ms: number }>(`SELECT ph.id, ph.plan_id, ph.kind, p.name, p.protocol_json, ph.cycle_number, ph.planned_duration_ms FROM phase_runs ph JOIN plan_runs p ON p.id = ph.plan_id WHERE ph.status = 'pending' ORDER BY ph.created_at ASC LIMIT 1`);

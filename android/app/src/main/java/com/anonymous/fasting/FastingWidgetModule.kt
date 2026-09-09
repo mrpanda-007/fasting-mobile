@@ -14,4 +14,11 @@ class FastingWidgetModule(private val context: ReactApplicationContext) : ReactC
     FastingWidgetProvider.refresh(context)
     FastingRingWidgetProvider.refresh(context)
   }
+
+  @ReactMethod
+  fun clear() {
+    FastingWidgetStorage.clear(context)
+    FastingWidgetProvider.refresh(context)
+    FastingRingWidgetProvider.refresh(context)
+  }
 }

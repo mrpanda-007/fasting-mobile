@@ -49,6 +49,7 @@ yarn-error.*
 /android/*.iml
 /android/app/*.iml
 /android/app/debug.keystore
+/android/keystore.properties
 
 # iOS remains generated until it has platform-specific source to preserve.
 /ios

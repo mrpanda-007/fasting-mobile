@@ -8,7 +8,7 @@ type WidgetState =
   | { state: 'pending'; planName: string; phaseKind: 'fast' | 'refeed'; cycleNumber: number; darkMode: boolean }
   | { state: 'idle'; darkMode: boolean };
 
-type FastingWidgetNativeModule = { update(state: WidgetState): void };
+type FastingWidgetNativeModule = { clear(): void; update(state: WidgetState): void };
 
 /**
  * Android owns the widget's presentation. We only sync committed timer state,
@@ -38,4 +38,11 @@ export function syncFastingWidget(active: TimerSnapshot | null, pending: Pending
   }
 
   module.update({ state: 'idle', darkMode });
+}
+
+/** Clears widget preferences when the user deletes all local app data. */
+export function clearFastingWidget() {
+  if (Platform.OS !== 'android') return;
+  const module = NativeModules.FastingWidget as FastingWidgetNativeModule | undefined;
+  module?.clear();
 }
