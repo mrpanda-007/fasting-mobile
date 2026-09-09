@@ -1,0 +1,10 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:description="@string/fasting_ring_widget_description"
+  android:initialLayout="@layout/fasting_ring_widget"
+  android:previewLayout="@layout/fasting_ring_widget_preview"
+  android:minWidth="110dp"
+  android:minHeight="110dp"
+  android:resizeMode="none"
+  android:targetCellWidth="2"
+  android:targetCellHeight="2"
+  android:widgetCategory="home_screen" />

@@ -4,19 +4,23 @@ import { snapshotTimer, type ActiveTimerRecord, type TimerSnapshot } from '../..
 import { protocolForPreset, type ProtocolSnapshot } from '../../../domain/fasting/protocol';
 import { cancelActivePlan, endActivePhase, getActiveNotificationId, getActiveTimer, getPendingPhase, listHistory, setActiveNotificationId, startPendingPhase, startPlan, type HistoryItem, type PendingPhase } from '../../../data/local/sqlite/fastingRepository';
 import { cancelTargetNotification, scheduleTargetNotification } from '../../../services/notifications/timerNotification';
+import { syncFastingWidget } from '../../../services/widgets/fastingWidget';
 
 type FastingStore = { hydrated: boolean; active: TimerSnapshot | null; pending: PendingPhase | null; history: HistoryItem[]; error: string | null };
 
-export function useFastingTimer() {
+export function useFastingTimer(darkMode: boolean) {
   const [store, setStore] = useState<FastingStore>({ hydrated: false, active: null, pending: null, history: [], error: null });
   const [isForeground, setIsForeground] = useState(AppState.currentState === 'active');
   const refresh = useCallback(async () => {
     try {
       const [active, pending, history] = await Promise.all([getActiveTimer(), getPendingPhase(), listHistory()]);
-      setStore({ hydrated: true, active: active ? snapshotTimer(active) : null, pending, history, error: null });
+      const snapshot = active ? snapshotTimer(active) : null;
+      syncFastingWidget(snapshot, pending, darkMode);
+      setStore({ hydrated: true, active: snapshot, pending, history, error: null });
     } catch (error) { setStore((current) => ({ ...current, hydrated: true, error: error instanceof Error ? error.message : 'Unable to restore your timer.' })); }
-  }, []);
+  }, [darkMode]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { syncFastingWidget(store.active, store.pending, darkMode); }, [darkMode]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => { setIsForeground(next === 'active'); if (next === 'active') void refresh(); });
     return () => subscription.remove();

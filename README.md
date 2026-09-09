@@ -127,6 +127,17 @@ Install it to a connected Android device with:
 adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
 
+### Android native source and widgets
+
+The Android project is checked into source control because the app includes
+custom native home-screen widgets and a React Native bridge. Keep all files in
+`android/app/src/main/` and the Gradle project files under version control.
+
+Do not run `npx expo prebuild --clean` for Android: it deletes and regenerates
+the native project, which would remove the custom widget implementation. Build
+the checked-in Android project with Gradle or `npx expo run:android` instead.
+Only local Android build output, IDE state, and signing material are ignored.
+
 ## Available scripts
 
 | Command | Purpose |

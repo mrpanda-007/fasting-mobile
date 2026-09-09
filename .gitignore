@@ -36,6 +36,19 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# Native Android source is intentionally committed. It contains the custom
+# fasting widgets and their React Native bridge. Ignore only files that Android
+# and Gradle can regenerate locally.
+/android/.gradle/
+/android/.kotlin/
+/android/.idea/
+/android/build/
+/android/app/.cxx/
+/android/app/build/
+/android/local.properties
+/android/*.iml
+/android/app/*.iml
+/android/app/debug.keystore
+
+# iOS remains generated until it has platform-specific source to preserve.
 /ios
-/android

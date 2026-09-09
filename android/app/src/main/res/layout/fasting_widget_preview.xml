@@ -1,0 +1,15 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/fasting_widget_background"
+  android:orientation="vertical"
+  android:padding="16dp">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="18:6 Fast" android:textColor="#6B665E" android:textSize="12sp" />
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="FASTING" android:textColor="#C67139" android:textSize="10sp" android:textStyle="bold" />
+  </LinearLayout>
+  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="13:42" android:textColor="#1A1A1A" android:textSize="44sp" />
+  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="elapsed today" android:textColor="#6B665E" android:textSize="12sp" />
+  <ProgressBar style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="14dp" android:progress="72" android:progressDrawable="@drawable/fasting_widget_progress" />
+  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Target 8:00 pm" android:textColor="#6B665E" android:textSize="12sp" />
+</LinearLayout>

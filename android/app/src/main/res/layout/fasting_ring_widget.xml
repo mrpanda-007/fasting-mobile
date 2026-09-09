@@ -1,0 +1,13 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/fasting_ring_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/fasting_widget_background"
+  android:padding="12dp">
+  <ImageView android:id="@+id/fasting_ring_graph" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Fasting progress ring" android:scaleType="fitCenter" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:orientation="vertical" android:paddingHorizontal="12dp">
+    <TextView android:id="@+id/fasting_ring_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:singleLine="true" android:textColor="#C67139" android:textSize="9sp" android:textStyle="bold" />
+    <Chronometer android:id="@+id/fasting_ring_elapsed" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:ellipsize="none" android:gravity="center" android:includeFontPadding="false" android:singleLine="true" android:textColor="#1A1A1A" android:textSize="20sp" />
+    <TextView android:id="@+id/fasting_ring_elapsed_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:textColor="#6B665E" android:textSize="10sp" />
+  </LinearLayout>
+</FrameLayout>

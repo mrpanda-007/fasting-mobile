@@ -1,6 +1,6 @@
 import { useRef, useState, type PropsWithChildren } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Animated, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, darkColors } from '../../../shared/theme/colors';
@@ -21,10 +21,11 @@ let styles: ReturnType<typeof createStyles>;
 /** The first production flow: wireframe 3b, states T1 through T5. */
 export function TodayScreen() {
   const flow = useAppFlow();
-  const timer = useFastingTimer();
+  const timer = useFastingTimer(flow.darkMode);
   const { state, setState, tab, setTab, sheet, setSheet, settingsOpen, setSettingsOpen, darkMode, setDarkMode,
     selectedPlan, returnToIdle, choosePlan, startBuilder } = flow;
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [settingsView, setSettingsView] = useState<'settings' | 'safety'>('settings');
   palette = darkMode ? darkColors : colors;
   styles = createStyles();
   const isBuilder = state === 'rollingBuilder' || state === 'customBuilder';
@@ -42,20 +43,20 @@ export function TodayScreen() {
     <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, state === 'refeeding' || state === 'transition' ? styles.refeedCanvas : undefined]}>
       <View style={styles.screen}>
         <StatusBar style={darkMode ? 'light' : 'dark'} />
-        {!isBuilder && <AppHeader onOpenSettings={() => setSettingsOpen(true)} />}
-        {tab === 'today' && !timer.active && !timer.pending && state === 'idle' && <IdleState selectedPlan={selectedPlan} onPlanSelect={choosePlan} onStart={startSelectedPlan} />}
-        {tab === 'today' && activeState === 'fasting' && timer.active && <FastingState timer={timer.active} onOpenEnd={() => setSheet('endFast')} onOpenPlan={() => setSheet('planDetails')} />}
-        {tab === 'today' && activeState === 'refeeding' && timer.active && <RefeedingState timer={timer.active} onEndRefeed={endActive} onOpenPlan={() => setSheet('planDetails')} />}
-        {tab === 'today' && timer.pending && <PendingState kind={timer.pending.kind} planDetail={protocolDetail(timer.pending.protocol)} onEndPlan={async () => { await timer.cancelPlan(); setState('complete'); }} onStart={startPending} />}
-        {tab === 'today' && !timer.active && !timer.pending && state === 'transition' && <TransitionState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onStartNext={() => setState('fasting')} />}
-        {tab === 'today' && state === 'complete' && <CompleteState onDone={() => returnToIdle()} onRepeat={() => returnToIdle('Rolling')} />}
-        {state === 'rollingBuilder' && <PlanBuilder variant="rolling" onClose={() => setState('idle')} onStart={async (protocol) => { await timer.startProtocol(protocol); startBuilder('Rolling'); }} />}
-        {state === 'customBuilder' && <PlanBuilder variant="custom" onClose={() => setState('idle')} onStart={async (protocol) => { await timer.startProtocol(protocol); startBuilder('Custom'); }} />}
-        {/* Together, pairing, and reactions are intentionally paused while the solo flow is refined. */}
-        {tab === 'history' && <HistoryScreen entries={timer.history} selectedId={selectedHistoryId} onBack={() => setSelectedHistoryId(null)} onOpenEntry={setSelectedHistoryId} />}
-        {!isBuilder && <BottomTabs activeTab={tab} onSelect={setTab} />}
-        <AppSheet activeTimer={timer.active} kind={sheet} onClose={() => setSheet(null)} onEndStandalone={async () => { await endActive(); returnToIdle(); }} onFinishPlan={async () => { await timer.cancelPlan(); setSheet(null); setState('complete'); }} onStartRefeed={endAndStartRefeed} rolling={timer.active?.protocol.repeatCount !== 1} />
-        <ThemePicker darkMode={darkMode} onClose={() => setSettingsOpen(false)} onSelect={(value) => { setDarkMode(value); setSettingsOpen(false); }} visible={settingsOpen} />
+        {settingsOpen ? <SettingsScreen darkMode={darkMode} onBackToSettings={() => setSettingsView('settings')} onClose={() => { setSettingsOpen(false); setSettingsView('settings'); }} onOpenSafety={() => setSettingsView('safety')} onToggleDarkMode={() => setDarkMode(!darkMode)} view={settingsView} /> : <>
+          {!isBuilder && <AppHeader onOpenSettings={() => { setSettingsView('settings'); setSettingsOpen(true); }} />}
+          {tab === 'today' && !timer.active && !timer.pending && state === 'idle' && <IdleState selectedPlan={selectedPlan} onPlanSelect={choosePlan} onStart={startSelectedPlan} />}
+          {tab === 'today' && activeState === 'fasting' && timer.active && <FastingState timer={timer.active} onOpenEnd={() => setSheet('endFast')} onOpenPlan={() => setSheet('planDetails')} />}
+          {tab === 'today' && activeState === 'refeeding' && timer.active && <RefeedingState timer={timer.active} onEndRefeed={endActive} onOpenPlan={() => setSheet('planDetails')} />}
+          {tab === 'today' && timer.pending && <PendingState kind={timer.pending.kind} planDetail={protocolDetail(timer.pending.protocol)} onEndPlan={async () => { await timer.cancelPlan(); setState('complete'); }} onStart={startPending} />}
+          {tab === 'today' && !timer.active && !timer.pending && state === 'transition' && <TransitionState onEndPlan={() => setState('complete')} onOpenPlan={() => setSheet('planDetails')} onStartNext={() => setState('fasting')} />}
+          {tab === 'today' && state === 'complete' && <CompleteState onDone={() => returnToIdle()} onRepeat={() => returnToIdle('Rolling')} />}
+          {state === 'rollingBuilder' && <PlanBuilder variant="rolling" onClose={() => setState('idle')} onStart={async (protocol) => { await timer.startProtocol(protocol); startBuilder('Rolling'); }} />}
+          {state === 'customBuilder' && <PlanBuilder variant="custom" onClose={() => setState('idle')} onStart={async (protocol) => { await timer.startProtocol(protocol); startBuilder('Custom'); }} />}
+          {tab === 'history' && <HistoryScreen entries={timer.history} selectedId={selectedHistoryId} onBack={() => setSelectedHistoryId(null)} onOpenEntry={setSelectedHistoryId} />}
+          {!isBuilder && <BottomTabs activeTab={tab} onSelect={setTab} />}
+          <AppSheet activeTimer={timer.active} kind={sheet} onClose={() => setSheet(null)} onEndStandalone={async () => { await endActive(); returnToIdle(); }} onFinishPlan={async () => { await timer.cancelPlan(); setSheet(null); setState('complete'); }} onStartRefeed={endAndStartRefeed} rolling={timer.active?.protocol.repeatCount !== 1} />
+        </>}
         {timer.error && <Text style={styles.builderNote}>{timer.error}</Text>}
       </View>
     </SafeAreaView>
@@ -63,7 +64,7 @@ export function TodayScreen() {
 }
 
 function AppHeader({ onOpenSettings }: { onOpenSettings: () => void }) {
-  return <View style={styles.header}><Text style={styles.time}>9:41</Text><PressableScale accessibilityLabel="Choose theme" accessibilityRole="button" onPress={onOpenSettings} style={styles.settingsButton}><SettingsIcon /></PressableScale></View>;
+  return <View style={styles.header}><Text style={styles.time}>9:41</Text><PressableScale accessibilityLabel="Open settings" accessibilityRole="button" onPress={onOpenSettings} style={styles.settingsButton}><SettingsIcon /></PressableScale></View>;
 }
 
 function SettingsIcon() { return <View style={styles.settingsIcon}><View style={[styles.settingLine, styles.settingLineOne]} /><View style={[styles.settingDot, styles.settingDotOne]} /><View style={[styles.settingLine, styles.settingLineTwo]} /><View style={[styles.settingDot, styles.settingDotTwo]} /><View style={[styles.settingLine, styles.settingLineThree]} /><View style={[styles.settingDot, styles.settingDotThree]} /></View>; }
@@ -188,10 +189,6 @@ function AppSheet({ activeTimer, kind, onClose, onEndStandalone, onFinishPlan, o
   </Modal>;
 }
 
-function ThemePicker({ darkMode, onClose, onSelect, visible }: { darkMode: boolean; onClose: () => void; onSelect: (dark: boolean) => void; visible: boolean }) {
-  return <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}><View style={styles.themeOverlay}><Pressable accessibilityLabel="Close theme picker" onPress={onClose} style={styles.scrim} /><View style={styles.themePicker}><Text style={styles.themeTitle}>Appearance</Text><Text style={styles.themeCopy}>Choose a theme for the app.</Text><PressableScale accessibilityRole="button" onPress={() => onSelect(false)} style={[styles.themeOption, !darkMode && styles.themeOptionSelected]}><Text style={styles.planName}>Light</Text>{!darkMode && <Text style={styles.selectedAdornment}>✓</Text>}</PressableScale><PressableScale accessibilityRole="button" onPress={() => onSelect(true)} style={[styles.themeOption, darkMode && styles.themeOptionSelected]}><Text style={styles.planName}>Dark</Text>{darkMode && <Text style={styles.selectedAdornment}>✓</Text>}</PressableScale></View></View></Modal>;
-}
-
 // Paused paired-reaction UI retained for the later Together release.
 function ReactionSheet({ onSend }: { onSend: () => void }) {
   const [reaction, setReaction] = useState('🔥');
@@ -292,9 +289,34 @@ function HistoryRow({ date, detail, onPress, status }: { date: string; detail: s
   return <PressableScale accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} style={styles.historyRow}><View><Text style={styles.planName}>{detail}</Text><Text style={styles.planDetail}>{date}</Text></View><View style={styles.historyStatus}><Text style={styles.planDetail}>{status}</Text>{onPress && <Text style={styles.rowAdornment}>›</Text>}</View></PressableScale>;
 }
 
-function SettingsScreen({ darkMode, onClose, onRemovePartner, onToggleDarkMode, partner }: { darkMode: boolean; onClose: () => void; onRemovePartner: () => void; onToggleDarkMode: () => void; partner?: string }) {
-  return <View style={styles.content}><PressableScale accessibilityRole="button" onPress={onClose}><Text style={styles.closeText}>✕ Close</Text></PressableScale><Text style={styles.question}>Settings</Text><View style={styles.stats}><Stat label="Account" value="Signed in" /><Stat label="Notifications" value="After your first fast" /><Stat label="Auto-start next fast" value="Off" /><Stat label="Default plan" value="24h Fast" /><Stat label="Time format" value="24h" /><PressableScale accessibilityRole="button" onPress={onToggleDarkMode} style={styles.stat}><Text style={styles.planName}>Dark mode</Text><View style={[styles.toggle, darkMode && styles.toggleOn]}><View style={[styles.toggleKnob, darkMode && styles.toggleKnobOn]} /></View></PressableScale>{partner && <PressableScale accessibilityRole="button" onPress={onRemovePartner} style={styles.stat}><Text style={styles.planName}>Partner</Text><Text style={styles.dangerText}>Remove {partner}</Text></PressableScale>}<Stat label="About & safety" value="›" /></View><Text style={styles.builderNote}>Auto-start stays off by default so eating time is never logged as fasting.</Text></View>;
+function SettingsScreen({ darkMode, onBackToSettings, onClose, onOpenSafety, onToggleDarkMode, view }: { darkMode: boolean; onBackToSettings: () => void; onClose: () => void; onOpenSafety: () => void; onToggleDarkMode: () => void; view: 'settings' | 'safety' }) {
+  if (view === 'safety') return <SafetyScreen onBack={onBackToSettings} onClose={onClose} />;
+  return <View style={styles.settingsContent}>
+    <PressableScale accessibilityRole="button" onPress={onClose}><Text style={styles.closeText}>✕ Close</Text></PressableScale>
+    <Text style={styles.question}>Settings</Text>
+    <Text style={styles.sectionLabel}>APPEARANCE</Text>
+    <View style={styles.stats}><PressableScale accessibilityLabel="Toggle dark mode" accessibilityRole="button" onPress={onToggleDarkMode} style={styles.stat}><Text style={styles.planName}>Dark mode</Text><View style={[styles.toggle, darkMode && styles.toggleOn]}><View style={[styles.toggleKnob, darkMode && styles.toggleKnobOn]} /></View></PressableScale></View>
+    <Text style={styles.sectionLabel}>ABOUT</Text>
+    <View style={styles.stats}><PressableScale accessibilityLabel="Open about and safety" accessibilityRole="button" onPress={onOpenSafety} style={styles.stat}><Text style={styles.planName}>About & safety</Text><Text style={styles.rowAdornment}>›</Text></PressableScale><Stat label="Version" value="1.0.0" /></View>
+    <Text style={styles.builderNote}>Your theme choice is saved on this device.</Text>
+  </View>;
 }
+
+function SafetyScreen({ onBack, onClose }: { onBack: () => void; onClose: () => void }) {
+  return <ScrollView contentContainerStyle={styles.safetyContent} showsVerticalScrollIndicator={false}>
+    <PressableScale accessibilityRole="button" onPress={onBack}><Text style={styles.closeText}>‹ Settings</Text></PressableScale>
+    <Text style={styles.question}>About & safety</Text>
+    <Text style={styles.safetyLead}>Fasting is a personal wellness practice. This app tracks time; it does not provide medical advice.</Text>
+    <SafetySection title="Before you fast">Talk with a qualified healthcare professional first if you are pregnant or breastfeeding, under 18, have a history of disordered eating, diabetes, or take medicine that affects blood sugar, blood pressure, or hydration.</SafetySection>
+    <SafetySection title="Listen to your body">End your fast and seek medical help if you feel faint, confused, unwell, or have concerning symptoms.</SafetySection>
+    <SafetySection title="How this timer works">A target time is not a recommendation. Your timer keeps going until you choose to end the phase.</SafetySection>
+    <SafetySection title="Your data">Fasting history and preferences stay on this device. Notifications are optional.</SafetySection>
+    <Text style={styles.builderNote}>Designed for adults who choose to fast. Not medical advice.</Text>
+    <SecondaryButton label="Close" onPress={onClose} />
+  </ScrollView>;
+}
+
+function SafetySection({ children, title }: PropsWithChildren<{ title: string }>) { return <View style={styles.safetySection}><Text style={styles.sectionLabel}>{title.toUpperCase()}</Text><Text style={styles.safetyBody}>{children}</Text></View>; }
 
 function StateLabel({ children, colour }: PropsWithChildren<{ colour: string }>) { return <Text style={[styles.stateLabel, { color: colour }]}>{children}</Text>; }
 function readableDuration(milliseconds: number) { const minutes = Math.floor(Math.abs(milliseconds) / 60000); const hours = Math.floor(minutes / 60); return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`; }
@@ -319,7 +341,7 @@ function BottomTabs({ activeTab, onSelect }: { activeTab: AppTab; onSelect: (tab
 function createStyles() { return StyleSheet.create({
   safeArea: { backgroundColor: palette.surface, flex: 1 }, refeedCanvas: { backgroundColor: palette.canvas }, screen: { flex: 1, paddingHorizontal: 20 },
   header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 20, paddingTop: 8 }, time: { color: palette.subtle, fontSize: 12 }, settingsLink: { alignItems: 'center', flexDirection: 'row', gap: 8 }, avatar: { borderColor: palette.subtle, borderRadius: 99, borderStyle: 'dashed', borderWidth: 1.5, height: 36, width: 36 }, settingsButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 99, borderWidth: 1.5, height: 40, justifyContent: 'center', width: 40 }, settingsIcon: { height: 18, position: 'relative', width: 18 }, settingLine: { backgroundColor: palette.ink, height: 1.5, left: 0, position: 'absolute', right: 0 }, settingLineOne: { top: 2 }, settingLineTwo: { top: 8 }, settingLineThree: { top: 14 }, settingDot: { backgroundColor: palette.surface, borderColor: palette.ink, borderRadius: 4, borderWidth: 1.5, height: 7, position: 'absolute', width: 7 }, settingDotOne: { right: 2, top: -1 }, settingDotTwo: { left: 3, top: 5 }, settingDotThree: { right: 5, top: 11 },
-  content: { flex: 1, gap: 14 }, question: { color: palette.ink, fontSize: 28, fontWeight: '600', letterSpacing: -0.5, lineHeight: 33 }, stateLabel: { fontSize: 13, fontWeight: '600', letterSpacing: 2.1, marginTop: 2 },
+  content: { flex: 1, gap: 14 }, settingsContent: { flex: 1, gap: 16 }, safetyContent: { gap: 20, paddingBottom: 28 }, safetyLead: { color: palette.muted, fontSize: 16, lineHeight: 23 }, safetySection: { borderTopColor: palette.divider, borderTopWidth: 1, gap: 7, paddingTop: 14 }, safetyBody: { color: palette.ink, fontSize: 16, lineHeight: 23 }, question: { color: palette.ink, fontSize: 28, fontWeight: '600', letterSpacing: -0.5, lineHeight: 33 }, stateLabel: { fontSize: 13, fontWeight: '600', letterSpacing: 2.1, marginTop: 2 },
   planList: { borderTopColor: palette.divider, borderTopWidth: 1 }, planRow: { alignItems: 'center', borderBottomColor: palette.divider, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 66, paddingHorizontal: 2, paddingVertical: 10 }, selectedPlan: { backgroundColor: palette.canvas, paddingHorizontal: 10 }, planName: { color: palette.ink, fontSize: 16 }, planDetail: { color: palette.subtle, fontSize: 13, marginTop: 3 }, rowAdornment: { color: palette.subtle, fontSize: 21 }, selectedAdornment: { color: palette.accent }, starting: { color: palette.subtle, fontSize: 14, lineHeight: 20 }, quietAction: { color: palette.muted, fontSize: 15, paddingVertical: 8, textAlign: 'center' },
   primaryButton: { alignItems: 'center', backgroundColor: palette.ink, borderRadius: 999, justifyContent: 'center', minHeight: 54, paddingHorizontal: 20 }, primaryButtonDisabled: { backgroundColor: palette.divider }, primaryText: { color: palette.surface, fontSize: 17, fontWeight: '600' }, primaryTextDisabled: { color: palette.muted }, secondaryButton: { alignItems: 'center', borderColor: palette.ink, borderRadius: 999, borderWidth: 1.5, justifyContent: 'center', minHeight: 52, paddingHorizontal: 20 }, secondaryText: { color: palette.ink, fontSize: 16, fontWeight: '500' }, dangerButton: { alignItems: 'center', borderColor: palette.danger, borderRadius: 999, borderStyle: 'dashed', borderWidth: 1.5, justifyContent: 'center', minHeight: 48, paddingHorizontal: 20 }, dangerText: { color: palette.danger, fontSize: 15, fontWeight: '500' },
   timerTapTarget: { alignSelf: 'flex-start' }, timer: { color: palette.ink, fontSize: 52, fontVariant: ['tabular-nums'], letterSpacing: -1.6, lineHeight: 56 }, timerSeconds: { color: palette.subtle, fontSize: 26, letterSpacing: -0.5 }, summary: { color: palette.muted, fontSize: 16, lineHeight: 22, marginTop: -6 }, progressTrack: { backgroundColor: palette.divider, borderRadius: 99, height: 10, overflow: 'hidden' }, progressValue: { borderRadius: 99, height: '100%' },
