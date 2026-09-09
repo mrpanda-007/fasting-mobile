@@ -7,6 +7,7 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Build
 import android.os.SystemClock
@@ -42,25 +43,19 @@ class FastingWidgetProvider : AppWidgetProvider() {
         else -> R.layout.fasting_widget_small
       }
       val views = RemoteViews(context.packageName, layout)
-      bind(context, views, FastingWidgetStorage.read(context), layout)
+      bind(context, views, FastingWidgetStorage.read(context), layout, id)
       manager.updateAppWidget(id, views)
     }
 
     private fun updatePickerPreview(context: Context, manager: AppWidgetManager, component: ComponentName) {
       if (Build.VERSION.SDK_INT < 35) return
       val preview = RemoteViews(context.packageName, R.layout.fasting_widget_large)
-      bind(context, preview, FastingWidgetStorage.read(context), R.layout.fasting_widget_large)
+      bind(context, preview, FastingWidgetStorage.read(context), R.layout.fasting_widget_large, null)
       manager.setWidgetPreview(component, AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN, preview)
     }
 
-    private fun bind(context: Context, views: RemoteViews, snapshot: FastingWidgetStorage.Snapshot, layout: Int) {
-      val openApp = PendingIntent.getActivity(
-        context,
-        0,
-        Intent(context, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP },
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-      )
-      views.setOnClickPendingIntent(R.id.fasting_widget_root, openApp)
+    private fun bind(context: Context, views: RemoteViews, snapshot: FastingWidgetStorage.Snapshot, layout: Int, id: Int?) {
+      if (id != null) views.setOnClickPendingIntent(R.id.fasting_widget_root, openAppIntent(context, id))
       applyTheme(views, snapshot.darkMode, layout)
 
       if (snapshot.state == "active" && snapshot.startedAt > 0L && snapshot.targetAt > snapshot.startedAt) {
@@ -86,6 +81,7 @@ class FastingWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.fasting_widget_metric_one_value, label.lowercase().replaceFirstChar { it.titlecase() })
         views.setTextViewText(R.id.fasting_widget_metric_two_label, "CYCLE")
         views.setTextViewText(R.id.fasting_widget_metric_two_value, snapshot.cycleNumber.toString())
+        views.setContentDescription(R.id.fasting_widget_root, "$phaseCopy. ${snapshot.planName}. Tap to open Fasting.")
         if (layout == R.layout.fasting_widget_large) {
           views.setTextViewText(
             R.id.fasting_widget_message,
@@ -110,11 +106,21 @@ class FastingWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.fasting_widget_metric_one_value, if (isPending) next.replaceFirstChar { it.titlecase() } else "Plan")
         views.setTextViewText(R.id.fasting_widget_metric_two_label, "STATUS")
         views.setTextViewText(R.id.fasting_widget_metric_two_value, "Ready")
+        views.setContentDescription(R.id.fasting_widget_root, "Fasting widget. ${if (isPending) "Next phase ready" else "Ready when you are"}. Tap to open Fasting.")
         if (layout == R.layout.fasting_widget_large) {
           views.setTextViewText(R.id.fasting_widget_message, if (isPending) "Your next phase is ready when you are." else "Choose a plan when it feels right for you.")
         }
         views.setProgressBar(R.id.fasting_widget_progress, 100, 0, false)
       }
+    }
+
+    private fun openAppIntent(context: Context, id: Int): PendingIntent {
+      val intent = Intent(context, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+        data = Uri.parse("fasting://widget/$id")
+      }
+      return PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     private fun applyTheme(views: RemoteViews, dark: Boolean, layout: Int) {

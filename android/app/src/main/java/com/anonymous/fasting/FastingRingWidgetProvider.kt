@@ -7,6 +7,7 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -37,13 +38,7 @@ class FastingRingWidgetProvider : AppWidgetProvider() {
     private fun update(context: Context, manager: AppWidgetManager, id: Int) {
       val views = RemoteViews(context.packageName, R.layout.fasting_ring_widget)
       val snapshot = FastingWidgetStorage.read(context)
-      val openApp = PendingIntent.getActivity(
-        context,
-        1,
-        Intent(context, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP },
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-      )
-      views.setOnClickPendingIntent(R.id.fasting_ring_root, openApp)
+      views.setOnClickPendingIntent(R.id.fasting_ring_root, openAppIntent(context, id))
 
       if (snapshot.state == "active" && snapshot.startedAt > 0L && snapshot.targetAt > snapshot.startedAt) {
         val now = System.currentTimeMillis()
@@ -55,14 +50,25 @@ class FastingRingWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.fasting_ring_status, if (snapshot.phaseKind == "refeed") "REFEEDING" else "FASTING")
         views.setChronometer(R.id.fasting_ring_elapsed, elapsedBase, null, true)
         views.setTextViewText(R.id.fasting_ring_elapsed_label, "elapsed")
+        views.setContentDescription(R.id.fasting_ring_root, "${if (snapshot.phaseKind == "refeed") "Refeeding" else "Fasting"}. Elapsed time. Tap to open Fasting.")
       } else {
         views.setImageViewBitmap(R.id.fasting_ring_graph, ringBitmap(0f, false, snapshot.darkMode))
         views.setTextViewText(R.id.fasting_ring_status, if (snapshot.state == "pending") "NEXT PHASE READY" else "FASTING")
         views.setTextViewText(R.id.fasting_ring_elapsed, if (snapshot.state == "pending") "Open app" else "Ready")
         views.setTextViewText(R.id.fasting_ring_elapsed_label, if (snapshot.state == "pending") "to begin" else "when you are")
+        views.setContentDescription(R.id.fasting_ring_root, "Fasting ring widget. ${if (snapshot.state == "pending") "Next phase ready" else "Ready when you are"}. Tap to open Fasting.")
       }
       applyTheme(views, snapshot.darkMode)
       manager.updateAppWidget(id, views)
+    }
+
+    private fun openAppIntent(context: Context, id: Int): PendingIntent {
+      val intent = Intent(context, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+        data = Uri.parse("fasting://ring-widget/$id")
+      }
+      return PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     private fun updatePickerPreview(context: Context, manager: AppWidgetManager, component: ComponentName) {
