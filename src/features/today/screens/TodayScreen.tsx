@@ -326,10 +326,11 @@ function PrivacyScreen({ onBack, onClose, onDeleteAllLocalData }: { onBack: () =
   return <ScrollView contentContainerStyle={styles.safetyContent} showsVerticalScrollIndicator={false}>
     <PressableScale accessibilityRole="button" onPress={onBack}><Text style={styles.closeText}>‹ Settings</Text></PressableScale>
     <Text style={styles.question}>Privacy</Text>
-    <Text style={styles.safetyLead}>Last updated September 9, 2026. Fasting is designed to work without an account or remote sync.</Text>
+    <Text style={styles.safetyLead}>Last updated September 10, 2026. Fasting is designed to work without an account or remote sync.</Text>
     <SafetySection title="Data stored on your device">Your fasting plans, phase timestamps, history, and local notification identifiers are stored in the app’s SQLite database. Your theme choice and any saved partner preference are stored in app preferences.</SafetySection>
     <SafetySection title="Widget data">Android widgets keep the current plan name, phase, timestamps, cycle, and chosen theme in Android SharedPreferences so the widget can render when the app is closed.</SafetySection>
     <SafetySection title="Notifications">If you allow notifications, the app schedules a local alert on your device when a fast or refeed target is reached. It does not send push notifications or notification data to us.</SafetySection>
+    <SafetySection title="No data collection or sharing">The current version does not use analytics, advertising, tracking, crash reporting, accounts, or remote sync. It does not sell or share your fasting information.</SafetySection>
     <SafetySection title="Android backups">Android backup is enabled. If you turn on device backup, Android may copy app data to the backup provider associated with your device. We do not receive or control those backup copies.</SafetySection>
     <SafetySection title="Retention and deletion">Local data remains until you delete it below or uninstall the app. Deleting all local data also cancels scheduled local notifications and clears widget information. Uninstalling removes app-local data; any Android backup copy is managed by your backup provider.</SafetySection>
     <DangerButton label="Delete all local data" onPress={onDeleteAllLocalData} />
