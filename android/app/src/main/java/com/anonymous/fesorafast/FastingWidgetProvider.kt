@@ -1,4 +1,4 @@
-package com.anonymous.fasting
+package com.anonymous.fesorafast
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -81,7 +81,7 @@ class FastingWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.fasting_widget_metric_one_value, label.lowercase().replaceFirstChar { it.titlecase() })
         views.setTextViewText(R.id.fasting_widget_metric_two_label, "CYCLE")
         views.setTextViewText(R.id.fasting_widget_metric_two_value, snapshot.cycleNumber.toString())
-        views.setContentDescription(R.id.fasting_widget_root, "$phaseCopy. ${snapshot.planName}. Tap to open Fasting.")
+        views.setContentDescription(R.id.fasting_widget_root, "$phaseCopy. ${snapshot.planName}. Tap to open Fesora Fast.")
         if (layout == R.layout.fasting_widget_large) {
           views.setTextViewText(
             R.id.fasting_widget_message,
@@ -98,7 +98,7 @@ class FastingWidgetProvider : AppWidgetProvider() {
       } else {
         val isPending = snapshot.state == "pending"
         val next = if (snapshot.phaseKind == "refeed") "refeed" else "fast"
-        views.setTextViewText(R.id.fasting_widget_protocol, if (isPending) snapshot.planName else "Fasting")
+        views.setTextViewText(R.id.fasting_widget_protocol, if (isPending) snapshot.planName else "Fesora Fast")
         views.setTextViewText(R.id.fasting_widget_status, if (isPending) "READY FOR ${next.uppercase()}" else "READY WHEN YOU ARE")
         views.setTextViewText(R.id.fasting_widget_timer, if (isPending) "Open app" else "Start a fast")
         views.setTextViewText(R.id.fasting_widget_supporting, if (isPending) "Tap to begin your next phase" else "Tap to choose a plan")
@@ -106,7 +106,7 @@ class FastingWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.fasting_widget_metric_one_value, if (isPending) next.replaceFirstChar { it.titlecase() } else "Plan")
         views.setTextViewText(R.id.fasting_widget_metric_two_label, "STATUS")
         views.setTextViewText(R.id.fasting_widget_metric_two_value, "Ready")
-        views.setContentDescription(R.id.fasting_widget_root, "Fasting widget. ${if (isPending) "Next phase ready" else "Ready when you are"}. Tap to open Fasting.")
+        views.setContentDescription(R.id.fasting_widget_root, "Fesora Fast widget. ${if (isPending) "Next phase ready" else "Ready when you are"}. Tap to open Fesora Fast.")
         if (layout == R.layout.fasting_widget_large) {
           views.setTextViewText(R.id.fasting_widget_message, if (isPending) "Your next phase is ready when you are." else "Choose a plan when it feels right for you.")
         }
@@ -118,7 +118,7 @@ class FastingWidgetProvider : AppWidgetProvider() {
       val intent = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-        data = Uri.parse("fasting://widget/$id")
+        data = Uri.parse("fesorafast://widget/$id")
       }
       return PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }

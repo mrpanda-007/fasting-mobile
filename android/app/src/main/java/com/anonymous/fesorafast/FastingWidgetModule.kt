@@ -1,4 +1,4 @@
-package com.anonymous.fasting
+package com.anonymous.fesorafast
 
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule

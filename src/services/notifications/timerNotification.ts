@@ -10,7 +10,7 @@ const channelId = 'fasting-targets';
 export async function scheduleTargetNotification(targetAt: number, phase: 'fast' | 'refeed') {
   if (targetAt <= Date.now()) return null;
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(channelId, { name: 'Fasting timers', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 150] });
+    await Notifications.setNotificationChannelAsync(channelId, { name: 'Fesora Fast timers', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 150] });
   }
   const permissions = await Notifications.getPermissionsAsync();
   const finalPermissions = permissions.granted ? permissions : await Notifications.requestPermissionsAsync();

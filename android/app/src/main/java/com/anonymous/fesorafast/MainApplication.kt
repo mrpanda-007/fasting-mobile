@@ -1,4 +1,4 @@
-package com.anonymous.fasting
+package com.anonymous.fesorafast
 
 import android.app.Application
 import android.content.res.Configuration

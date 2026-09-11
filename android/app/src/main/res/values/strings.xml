@@ -1,5 +1,5 @@
 <resources>
-  <string name="app_name">Fasting</string>
+  <string name="app_name">Fesora Fast</string>
   <string name="fasting_widget_description">Your current fasting phase at a glance</string>
   <string name="fasting_ring_widget_description">A fixed-size view of elapsed and remaining fasting time</string>
 </resources>

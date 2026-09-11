@@ -22,13 +22,13 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
-    <receiver android:name=".FastingWidgetProvider" android:exported="false" android:label="Fasting">
+    <receiver android:name=".FastingWidgetProvider" android:exported="false" android:label="Fesora Fast">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/fasting_widget_info"/>
     </receiver>
-    <receiver android:name=".FastingRingWidgetProvider" android:exported="false" android:label="Fasting ring">
+    <receiver android:name=".FastingRingWidgetProvider" android:exported="false" android:label="Fesora Fast ring">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>

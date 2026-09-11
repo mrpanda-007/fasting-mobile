@@ -1,4 +1,4 @@
-package com.anonymous.fasting
+package com.anonymous.fesorafast
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

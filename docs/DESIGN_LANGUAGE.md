@@ -1,4 +1,4 @@
-# Fasting design language
+# Fesora Fast design language
 
 Read this before making any UI change. This app should feel calm, deliberate, and quietly human — more like a well-made paper journal than a fitness dashboard.
 

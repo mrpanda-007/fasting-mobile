@@ -1,4 +1,4 @@
-package com.anonymous.fasting
+package com.anonymous.fesorafast
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -50,13 +50,13 @@ class FastingRingWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.fasting_ring_status, if (snapshot.phaseKind == "refeed") "REFEEDING" else "FASTING")
         views.setChronometer(R.id.fasting_ring_elapsed, elapsedBase, null, true)
         views.setTextViewText(R.id.fasting_ring_elapsed_label, "elapsed")
-        views.setContentDescription(R.id.fasting_ring_root, "${if (snapshot.phaseKind == "refeed") "Refeeding" else "Fasting"}. Elapsed time. Tap to open Fasting.")
+        views.setContentDescription(R.id.fasting_ring_root, "${if (snapshot.phaseKind == "refeed") "Refeeding" else "Fasting"}. Elapsed time. Tap to open Fesora Fast.")
       } else {
         views.setImageViewBitmap(R.id.fasting_ring_graph, ringBitmap(0f, false, snapshot.darkMode))
         views.setTextViewText(R.id.fasting_ring_status, if (snapshot.state == "pending") "NEXT PHASE READY" else "FASTING")
         views.setTextViewText(R.id.fasting_ring_elapsed, if (snapshot.state == "pending") "Open app" else "Ready")
         views.setTextViewText(R.id.fasting_ring_elapsed_label, if (snapshot.state == "pending") "to begin" else "when you are")
-        views.setContentDescription(R.id.fasting_ring_root, "Fasting ring widget. ${if (snapshot.state == "pending") "Next phase ready" else "Ready when you are"}. Tap to open Fasting.")
+        views.setContentDescription(R.id.fasting_ring_root, "Fesora Fast ring widget. ${if (snapshot.state == "pending") "Next phase ready" else "Ready when you are"}. Tap to open Fesora Fast.")
       }
       applyTheme(views, snapshot.darkMode)
       manager.updateAppWidget(id, views)
@@ -66,7 +66,7 @@ class FastingRingWidgetProvider : AppWidgetProvider() {
       val intent = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-        data = Uri.parse("fasting://ring-widget/$id")
+        data = Uri.parse("fesorafast://ring-widget/$id")
       }
       return PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }

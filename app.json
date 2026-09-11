@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Fasting",
-    "slug": "fasting",
+    "name": "Fesora Fast",
+    "slug": "fesora-fast",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.fasting"
+      "bundleIdentifier": "com.anonymous.fesorafast"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +17,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.fasting"
+      "package": "com.anonymous.fesorafast"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,4 +1,4 @@
-package com.anonymous.fasting
+package com.anonymous.fesorafast
 
 import android.content.Context
 import com.facebook.react.bridge.ReadableMap

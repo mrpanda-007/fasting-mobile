@@ -1,4 +1,4 @@
-# Fasting
+# Fesora Fast
 
 A calm, minimal fasting tracker built with Expo and React Native. It supports common fasting presets, custom and rolling protocols, persistent local timers, target notifications, and an on-device history of every finished run.
 
@@ -30,7 +30,7 @@ The Together/pairing/reaction experience is intentionally paused in the UI while
 | Notifications | `expo-notifications`; one permission-gated, silent local target notification per active phase |
 | App state | React hooks plus a small app-flow hook; partner preferences use AsyncStorage |
 | Platforms | Android and iOS; web development is also available through Expo |
-| Android application ID | `com.anonymous.fasting` |
+| Android application ID | `com.anonymous.fesorafast` |
 
 ### Timer behavior
 
@@ -156,7 +156,7 @@ For the persistence and timer decisions behind the app, see [docs/TIMER_HISTORY_
 
 ## Data and privacy
 
-Fasting runs and history are stored locally on the device in the app's SQLite database. There is no sign-in or remote sync in the current build. The `data/contracts` layer exists so account-backed sync can be introduced later without changing the timer domain model.
+Fesora Fast runs and history are stored locally on the device in the app's SQLite database. There is no sign-in or remote sync in the current build. The `data/contracts` layer exists so account-backed sync can be introduced later without changing the timer domain model.
 
 ## Contributing
 
